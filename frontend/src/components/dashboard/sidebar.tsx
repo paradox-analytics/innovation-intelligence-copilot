@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  LayoutDashboard,
   Network,
   Search,
   Settings,
@@ -22,6 +23,11 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: <LayoutDashboard className="h-5 w-5" />,
+  },
   {
     label: "Analysis",
     href: "/analyze",

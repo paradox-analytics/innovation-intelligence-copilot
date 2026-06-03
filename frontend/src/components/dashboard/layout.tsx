@@ -1,5 +1,6 @@
 "use client";
 
+import { CommandPalette } from "./command-palette";
 import { Header } from "./header";
 import { Sidebar } from "./sidebar";
 
@@ -13,10 +14,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-y-auto bg-bg-primary p-6">
+        <main className="flex-1 overflow-y-auto bg-bg-primary">
           {children}
         </main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

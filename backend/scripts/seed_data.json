@@ -1,0 +1,267 @@
+{
+  "documents": [
+    {
+      "id": "seed-doc-001",
+      "title": "Precision Fermentation: The Next Revolution in Alternative Proteins",
+      "doc_type": "REPORT",
+      "source_url": "https://example.com/reports/precision-fermentation-2025.pdf",
+      "content": "Precision fermentation leverages microbial hosts — engineered yeast, fungi, and bacteria — to produce animal-identical proteins, fats, and functional ingredients at industrial scale. The global precision fermentation market is projected to reach $36.3 billion by 2030, driven by declining unit economics and regulatory tailwinds. Key players include Perfect Day (whey protein), Impossible Foods (heme), and New Culture (casein). The technology enables 10-100x reduction in land use and 25x reduction in water consumption versus conventional animal agriculture. Major challenges remain in downstream processing costs, consumer acceptance, and securing non-GMO regulatory pathways in the EU.",
+      "metadata": {
+        "industry": "biotechnology",
+        "year": 2025,
+        "pages": 42
+      }
+    },
+    {
+      "id": "seed-doc-002",
+      "title": "Quantum Computing: From NISQ to Fault-Tolerant Systems",
+      "doc_type": "REPORT",
+      "source_url": "https://example.com/reports/quantum-computing-landscape.pdf",
+      "content": "The quantum computing landscape is transitioning from Noisy Intermediate-Scale Quantum (NISQ) devices to early fault-tolerant systems. IBM's 1,121-qubit Condor processor and Google's Willow chip with real-time error correction mark significant milestones. The addressable market for quantum computing is estimated at $850 billion across pharmaceuticals, finance, materials science, and logistics. Trapped-ion approaches (IonQ, Quantinuum) offer higher gate fidelity, while superconducting approaches (IBM, Google) provide faster gate speeds. Photonic quantum computing (PsiQuantum, Xanadu) promises room-temperature operation. The critical bottleneck remains achieving logical qubit error rates below 10^-12 for practical advantage.",
+      "metadata": {
+        "industry": "computing",
+        "year": 2025,
+        "pages": 78
+      }
+    },
+    {
+      "id": "seed-doc-003",
+      "title": "Solid-State Battery Commercialisation Roadmap",
+      "doc_type": "REPORT",
+      "source_url": "https://example.com/reports/solid-state-batteries-2025.pdf",
+      "content": "Solid-state batteries replace liquid electrolytes with solid ceramic, polymer, or sulfide electrolytes, promising 2-3x energy density improvements, faster charging, and elimination of thermal runaway risk. Toyota plans pilot production by 2027 with sulfide-based cells achieving 500 Wh/kg. QuantumScape's lithium-metal anode cells demonstrate 800+ cycle life with <20% degradation. Samsung SDI targets 900 Wh/L volumetric density for automotive applications. Key challenges include solid-electrolyte interface stability, manufacturing scalability (roll-to-roll vs. dry electrode), and cost parity with conventional lithium-ion ($80/kWh target). The market opportunity exceeds $25 billion by 2032.",
+      "metadata": {
+        "industry": "energy_storage",
+        "year": 2025,
+        "pages": 56
+      }
+    },
+    {
+      "id": "seed-doc-004",
+      "title": "CRISPR 3.0: Base Editing, Prime Editing, and Epigenetic Therapies",
+      "doc_type": "REPORT",
+      "source_url": "https://example.com/reports/crispr-next-gen.pdf",
+      "content": "Third-generation CRISPR technologies — base editing and prime editing — enable precise single-nucleotide modifications without double-strand breaks, dramatically reducing off-target effects. Beam Therapeutics' base editor BEAM-101 for sickle cell disease entered Phase 1/2 trials with 95% editing efficiency in HSCs. Prime editing (developed by David Liu's lab) can perform all 12 possible point mutations plus small insertions and deletions. Epigenetic CRISPR (CRISPRoff/CRISPRon) enables reversible gene silencing without permanent DNA changes, opening applications in chronic disease management. The global gene editing market is projected at $19.8 billion by 2030.",
+      "metadata": {
+        "industry": "biotechnology",
+        "year": 2025,
+        "pages": 64
+      }
+    },
+    {
+      "id": "seed-doc-005",
+      "title": "Commercial Fusion Energy: Pathway to First Light",
+      "doc_type": "REPORT",
+      "source_url": "https://example.com/reports/fusion-energy-2025.pdf",
+      "content": "Commercial fusion energy development has attracted over $7 billion in private investment across 40+ startups. Commonwealth Fusion Systems' SPARC tokamak (using high-temperature superconducting magnets) targets first plasma by 2026 and net energy by 2027. Helion Energy's field-reversed configuration approach promises direct electricity conversion with 95% efficiency. TAE Technologies' hydrogen-boron fuel cycle eliminates neutron radiation entirely. Key milestones include the National Ignition Facility's repeated ignition shots (3.15 MJ output from 2.05 MJ input) confirming fusion physics. Remaining challenges: tritium breeding blanket engineering, plasma-facing material durability, and achieving LCOE below $50/MWh.",
+      "metadata": {
+        "industry": "energy",
+        "year": 2025,
+        "pages": 88
+      }
+    }
+  ],
+  "entities": [
+    {
+      "id": "seed-ent-001",
+      "name": "Precision Fermentation",
+      "entity_type": "TECHNOLOGY",
+      "properties": {
+        "maturity": "growth",
+        "market_size_usd_bn": 36.3,
+        "sectors": ["food_tech", "biotechnology"]
+      }
+    },
+    {
+      "id": "seed-ent-002",
+      "name": "Quantum Computing",
+      "entity_type": "TECHNOLOGY",
+      "properties": {
+        "maturity": "emerging",
+        "market_size_usd_bn": 850,
+        "sectors": ["computing", "pharma", "finance"]
+      }
+    },
+    {
+      "id": "seed-ent-003",
+      "name": "Solid-State Batteries",
+      "entity_type": "TECHNOLOGY",
+      "properties": {
+        "maturity": "pre-commercial",
+        "market_size_usd_bn": 25,
+        "sectors": ["energy_storage", "automotive"]
+      }
+    },
+    {
+      "id": "seed-ent-004",
+      "name": "IBM",
+      "entity_type": "COMPANY",
+      "properties": {
+        "sector": "technology",
+        "headquarters": "Armonk, NY",
+        "focus": "superconducting quantum processors"
+      }
+    },
+    {
+      "id": "seed-ent-005",
+      "name": "Toyota",
+      "entity_type": "COMPANY",
+      "properties": {
+        "sector": "automotive",
+        "headquarters": "Toyota City, Japan",
+        "focus": "sulfide-based solid-state batteries"
+      }
+    },
+    {
+      "id": "seed-ent-006",
+      "name": "Beam Therapeutics",
+      "entity_type": "COMPANY",
+      "properties": {
+        "sector": "biotechnology",
+        "headquarters": "Cambridge, MA",
+        "focus": "base editing therapies"
+      }
+    },
+    {
+      "id": "seed-ent-007",
+      "name": "QuantumScape",
+      "entity_type": "STARTUP",
+      "properties": {
+        "sector": "energy_storage",
+        "headquarters": "San Jose, CA",
+        "funding_usd_mm": 1500,
+        "focus": "lithium-metal solid-state batteries"
+      }
+    },
+    {
+      "id": "seed-ent-008",
+      "name": "Commonwealth Fusion Systems",
+      "entity_type": "STARTUP",
+      "properties": {
+        "sector": "energy",
+        "headquarters": "Devens, MA",
+        "funding_usd_mm": 2000,
+        "focus": "high-temperature superconducting tokamak"
+      }
+    },
+    {
+      "id": "seed-ent-009",
+      "name": "Global Energy Storage Market",
+      "entity_type": "MARKET",
+      "properties": {
+        "size_usd_bn": 250,
+        "cagr_pct": 15.4,
+        "segments": ["lithium-ion", "solid-state", "flow", "sodium-ion"]
+      }
+    },
+    {
+      "id": "seed-ent-010",
+      "name": "US Patent 11,735,742 — Sulfide Solid Electrolyte",
+      "entity_type": "PATENT",
+      "properties": {
+        "assignee": "Toyota",
+        "filing_date": "2023-03-15",
+        "claims": 24,
+        "abstract": "Sulfide solid electrolyte composition with ionic conductivity exceeding 10 mS/cm at room temperature."
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "id": "seed-rel-001",
+      "source_entity_id": "seed-ent-004",
+      "target_entity_id": "seed-ent-002",
+      "relationship_type": "DEVELOPS",
+      "properties": {
+        "product": "Condor processor",
+        "qubits": 1121
+      }
+    },
+    {
+      "id": "seed-rel-002",
+      "source_entity_id": "seed-ent-005",
+      "target_entity_id": "seed-ent-003",
+      "relationship_type": "DEVELOPS",
+      "properties": {
+        "target_year": 2027,
+        "chemistry": "sulfide"
+      }
+    },
+    {
+      "id": "seed-rel-003",
+      "source_entity_id": "seed-ent-007",
+      "target_entity_id": "seed-ent-003",
+      "relationship_type": "DEVELOPS",
+      "properties": {
+        "chemistry": "lithium-metal anode",
+        "cycle_life": 800
+      }
+    },
+    {
+      "id": "seed-rel-004",
+      "source_entity_id": "seed-ent-003",
+      "target_entity_id": "seed-ent-009",
+      "relationship_type": "BELONGS_TO",
+      "properties": {
+        "segment": "solid-state"
+      }
+    },
+    {
+      "id": "seed-rel-005",
+      "source_entity_id": "seed-ent-010",
+      "target_entity_id": "seed-ent-005",
+      "relationship_type": "ASSIGNED_TO",
+      "properties": {
+        "jurisdiction": "US"
+      }
+    }
+  ],
+  "analysis": {
+    "id": "seed-analysis-001",
+    "query": "What is the competitive landscape for solid-state battery technology and which companies are best positioned for commercialisation by 2027?",
+    "status": "COMPLETED",
+    "confidence_score": 0.87,
+    "result": {
+      "executive_summary": "Solid-state batteries represent a transformative opportunity in energy storage, with Toyota, QuantumScape, and Samsung SDI leading commercialisation efforts. Toyota's sulfide-based approach offers the clearest path to pilot production by 2027, while QuantumScape's lithium-metal anode technology demonstrates superior cycle life. The market opportunity exceeds $25 billion by 2032.",
+      "recommendation": "Focus investment on sulfide-based electrolyte companies with established automotive OEM partnerships. Toyota and QuantumScape present the strongest risk-adjusted positions. Monitor Samsung SDI's volumetric density advances for consumer electronics applications.",
+      "supporting_evidence": [
+        "Toyota has 1,300+ solid-state battery patents — largest portfolio globally",
+        "QuantumScape cells show 800+ cycles with less than 20% capacity degradation",
+        "Samsung SDI achieves 900 Wh/L volumetric energy density",
+        "Global EV penetration exceeds 30% in major markets, creating pull demand"
+      ],
+      "contrarian_evidence": [
+        "Manufacturing scale-up costs may delay cost parity beyond 2030",
+        "Conventional lithium-ion continues improving (CATL's condensed batteries approach 500 Wh/kg)",
+        "Sodium-ion batteries may capture cost-sensitive segments before solid-state scales"
+      ],
+      "risks": [
+        {
+          "risk": "Manufacturing scalability",
+          "severity": "HIGH",
+          "mitigation": "Partner with established cell manufacturers for process transfer"
+        },
+        {
+          "risk": "Interface degradation under fast charging",
+          "severity": "MEDIUM",
+          "mitigation": "Invest in interlayer coating and pressure management R&D"
+        }
+      ],
+      "technology_signals": [
+        {
+          "signal": "Patent filing acceleration in sulfide electrolytes (+40% YoY)",
+          "strength": 0.92
+        },
+        {
+          "signal": "VC investment shift from polymer to sulfide approaches",
+          "strength": 0.78
+        }
+      ],
+      "key_assumptions": [
+        "EV demand growth continues at 25%+ CAGR through 2030",
+        "No breakthrough in alternative chemistries (e.g., lithium-air) that leapfrogs solid-state",
+        "Regulatory environments remain supportive of EV adoption"
+      ]
+    }
+  }
+}

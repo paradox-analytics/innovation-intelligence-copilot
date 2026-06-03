@@ -5,6 +5,7 @@ import { Bell, ChevronRight, User } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 const pathLabels: Record<string, string> = {
+  "/dashboard": "Dashboard",
   "/analyze": "Analysis",
   "/documents": "Documents",
   "/knowledge": "Knowledge Graph",

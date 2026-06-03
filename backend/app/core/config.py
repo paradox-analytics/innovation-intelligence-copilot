@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
     SECRET_KEY: str = "change-me-in-production"
+    ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = "INFO"
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
