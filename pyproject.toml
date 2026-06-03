@@ -1,0 +1,164 @@
+[tool.poetry]
+name = "innovation-intelligence-copilot"
+version = "0.1.0"
+description = "AI-powered innovation intelligence platform for enterprise technology advisory"
+authors = ["Innovation Intelligence Team"]
+license = "Proprietary"
+readme = "README.md"
+packages = [{ include = "app", from = "backend" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+# Web framework
+fastapi = "^0.115.0"
+uvicorn = { version = "^0.34.0", extras = ["standard"] }
+python-multipart = "^0.0.18"
+
+# AI / LLM
+langchain = "^0.3.0"
+langchain-anthropic = "^0.3.0"
+langchain-openai = "^0.3.0"
+langgraph = "^0.3.0"
+anthropic = "^0.42.0"
+openai = "^1.60.0"
+
+# Database
+sqlalchemy = { version = "^2.0.0", extras = ["asyncio"] }
+asyncpg = "^0.30.0"
+alembic = "^1.14.0"
+pgvector = "^0.3.0"
+
+# Neo4j
+neo4j = "^5.27.0"
+
+# Data validation + serialization
+pydantic = "^2.10.0"
+pydantic-settings = "^2.7.0"
+
+# Document processing
+pypdf = "^5.0.0"
+beautifulsoup4 = "^4.12.0"
+markdownify = "^0.14.0"
+
+# HTTP client
+httpx = "^0.28.0"
+
+# Cache + queue
+redis = { version = "^5.2.0", extras = ["hiredis"] }
+
+# Utilities
+python-jose = { version = "^3.3.0", extras = ["cryptography"] }
+passlib = { version = "^1.7.4", extras = ["bcrypt"] }
+structlog = "^24.4.0"
+tenacity = "^9.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+pytest-mock = "^3.14.0"
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+black = "^24.10.0"
+pre-commit = "^4.0.0"
+httpx = "^0.28.0"  # For TestClient
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# =============================================================================
+# Ruff — linter + formatter
+# =============================================================================
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["backend/app", "backend/tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific rules
+    "ASYNC", # flake8-async
+    "S",    # flake8-bandit (security)
+    "T20",  # flake8-print
+]
+ignore = [
+    "S101",  # assert usage allowed in tests
+    "B008",  # function call in default argument (FastAPI Depends)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/**/*.py" = ["S101", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# =============================================================================
+# Mypy — type checking
+# =============================================================================
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "neo4j.*",
+    "pgvector.*",
+    "langchain.*",
+    "langgraph.*",
+    "pypdf.*",
+    "bs4.*",
+    "markdownify.*",
+    "passlib.*",
+    "jose.*",
+]
+ignore_missing_imports = true
+
+# =============================================================================
+# Pytest
+# =============================================================================
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+addopts = "-ra -q --strict-markers"
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (require Docker services)",
+    "slow: Slow tests (skipped by default in CI fast mode)",
+]
+
+# =============================================================================
+# Coverage
+# =============================================================================
+[tool.coverage.run]
+source = ["backend/app"]
+omit = ["backend/app/core/config.py", "backend/tests/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+]
