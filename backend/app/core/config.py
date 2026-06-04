@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
 
-    # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # CORS — plain comma-separated string, parsed in main.py
+    CORS_ORIGINS: str = "*"
 
     # PostgreSQL + pgvector
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/innovation_intel"
