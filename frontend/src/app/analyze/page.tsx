@@ -27,7 +27,6 @@ import {
   Clock,
   ClipboardCopy,
   Download,
-  FileText,
   History,
   Loader2,
   PanelLeftClose,
@@ -943,37 +942,210 @@ function AnalyzePageContent() {
 
                   {/* Full Report Tab */}
                   <TabsContent value="report" className="mt-6">
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="flex items-center gap-2 text-base">
-                            <FileText className="h-5 w-5 text-accent-blue" />
-                            Full Report
-                          </CardTitle>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={handleCopyReport}
-                            >
-                              <ClipboardCopy className="h-4 w-4" />
-                              {copied ? "Copied!" : "Copy"}
-                            </Button>
-                            <Button variant="outline" size="sm">
-                              <Download className="h-4 w-4" />
-                              Export PDF
-                            </Button>
+                    <div className="mx-auto max-w-4xl">
+                      {/* Report Actions Bar */}
+                      <div className="mb-4 flex items-center justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={handleCopyReport}>
+                          <ClipboardCopy className="h-4 w-4" />
+                          {copied ? "Copied!" : "Copy Report"}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => window.print()}>
+                          <Download className="h-4 w-4" />
+                          Print / PDF
+                        </Button>
+                      </div>
+
+                      {/* Formatted Report */}
+                      <div className="rounded-xl border border-border-primary bg-bg-secondary shadow-lg print:shadow-none print:border-none">
+                        {/* Report Header */}
+                        <div className="border-b border-border-primary px-8 py-6">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-widest text-accent-blue">
+                                Strategic Intelligence Report
+                              </p>
+                              <h1 className="mt-2 text-xl font-bold text-text-primary leading-tight">
+                                {result?.query ?? question}
+                              </h1>
+                              <p className="mt-2 text-xs text-text-tertiary">
+                                Prepared by Innovation Intelligence Copilot&ensp;·&ensp;
+                                {result?.created_at
+                                  ? new Date(result.created_at).toLocaleDateString("en-US", {
+                                      year: "numeric", month: "long", day: "numeric",
+                                    })
+                                  : new Date().toLocaleDateString("en-US", {
+                                      year: "numeric", month: "long", day: "numeric",
+                                    })}
+                                &ensp;·&ensp;Multi-Agent Analysis (6 agents)
+                              </p>
+                            </div>
+                            {confidenceScore !== null && (
+                              <div className="flex flex-col items-center rounded-lg border border-border-primary bg-bg-tertiary px-4 py-3">
+                                <span className="text-2xl font-bold text-accent-blue">{gaugeScore}%</span>
+                                <span className="text-[10px] uppercase tracking-wider text-text-tertiary">Confidence</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="prose prose-invert max-w-none rounded-lg bg-bg-tertiary p-6">
-                          <pre className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary font-sans">
-                            {fullReportText}
-                          </pre>
+
+                        {/* Executive Summary */}
+                        {executiveSummary && (
+                          <div className="border-b border-border-primary px-8 py-6">
+                            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-tertiary">
+                              Executive Summary
+                            </h2>
+                            <p className="text-sm leading-relaxed text-text-primary">
+                              {executiveSummary}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Recommendation */}
+                        {recommendation && (
+                          <div className="border-b border-border-primary px-8 py-6">
+                            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-tertiary">
+                              Recommendation
+                            </h2>
+                            <div className="rounded-lg border-l-4 border-accent-blue bg-bg-tertiary px-4 py-3">
+                              <p className="text-sm font-medium leading-relaxed text-text-primary">
+                                {recommendation}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Key Metrics */}
+                        <div className="border-b border-border-primary px-8 py-6">
+                          <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-text-tertiary">
+                            Analysis Summary
+                          </h2>
+                          <div className="grid grid-cols-4 gap-4">
+                            <div className="rounded-lg bg-bg-tertiary p-3 text-center">
+                              <div className="text-lg font-bold text-accent-emerald">{supportingEvidence.length}</div>
+                              <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Supporting Evidence</div>
+                            </div>
+                            <div className="rounded-lg bg-bg-tertiary p-3 text-center">
+                              <div className="text-lg font-bold text-accent-rose">{contrarianEvidence.length}</div>
+                              <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Contrarian Evidence</div>
+                            </div>
+                            <div className="rounded-lg bg-bg-tertiary p-3 text-center">
+                              <div className="text-lg font-bold text-accent-amber">{structuredRisks.length}</div>
+                              <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Risks Identified</div>
+                            </div>
+                            <div className="rounded-lg bg-bg-tertiary p-3 text-center">
+                              <div className="text-lg font-bold text-accent-blue">{assumptions.length}</div>
+                              <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Key Assumptions</div>
+                            </div>
+                          </div>
                         </div>
-                      </CardContent>
-                    </Card>
+
+                        {/* Supporting Evidence */}
+                        {supportingEvidence.length > 0 && (
+                          <div className="border-b border-border-primary px-8 py-6">
+                            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-tertiary">
+                              Supporting Evidence
+                            </h2>
+                            <ol className="list-decimal space-y-2 pl-5">
+                              {supportingEvidence.map((e, i) => (
+                                <li key={i} className="text-sm leading-relaxed text-text-secondary pl-1">
+                                  {e.claim}
+                                  {e.source && e.source !== "Unknown" && (
+                                    <span className="ml-1 text-xs text-text-tertiary">— {e.source}</span>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+
+                        {/* Contrarian Evidence */}
+                        {contrarianEvidence.length > 0 && (
+                          <div className="border-b border-border-primary px-8 py-6">
+                            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-tertiary">
+                              Contrarian Evidence &amp; Challenged Assumptions
+                            </h2>
+                            <ol className="list-decimal space-y-2 pl-5">
+                              {contrarianEvidence.map((e, i) => (
+                                <li key={i} className="text-sm leading-relaxed text-text-secondary pl-1">
+                                  {e.claim}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+
+                        {/* Risk Assessment */}
+                        {structuredRisks.length > 0 && (
+                          <div className="border-b border-border-primary px-8 py-6">
+                            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-text-tertiary">
+                              Risk Assessment
+                            </h2>
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-border-primary text-left text-[10px] uppercase tracking-wider text-text-tertiary">
+                                  <th className="pb-2 pr-3">Risk</th>
+                                  <th className="pb-2 pr-3 w-20">Category</th>
+                                  <th className="pb-2 pr-3 w-20">Severity</th>
+                                  <th className="pb-2 w-24">Likelihood</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {structuredRisks.map((risk, i) => (
+                                  <tr key={i} className="border-b border-border-primary/50 last:border-0">
+                                    <td className="py-3 pr-3 text-text-secondary">
+                                      <p>{risk.description}</p>
+                                      {risk.mitigation && (
+                                        <p className="mt-1 text-xs text-text-tertiary italic">
+                                          Mitigation: {risk.mitigation}
+                                        </p>
+                                      )}
+                                    </td>
+                                    <td className="py-3 pr-3 align-top">
+                                      <Badge variant="default">{risk.category}</Badge>
+                                    </td>
+                                    <td className="py-3 pr-3 align-top">
+                                      <Badge variant={severityColor(risk.severity)}>{risk.severity}</Badge>
+                                    </td>
+                                    <td className="py-3 align-top text-xs text-text-tertiary capitalize">
+                                      {risk.likelihood}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Key Assumptions */}
+                        {assumptions.length > 0 && (
+                          <div className="border-b border-border-primary px-8 py-6">
+                            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-tertiary">
+                              Key Assumptions
+                            </h2>
+                            <ul className="space-y-2">
+                              {assumptions.map((a, i) => (
+                                <li key={i} className="flex gap-2 text-sm text-text-secondary">
+                                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-blue" />
+                                  {a}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Report Footer */}
+                        <div className="px-8 py-4">
+                          <div className="flex items-center justify-between text-[10px] text-text-tertiary">
+                            <span>
+                              Generated by Innovation Intelligence Copilot — Multi-Agent AI Analysis Platform
+                            </span>
+                            <span>
+                              Confidential — For Internal Use Only
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </TabsContent>
                 </Tabs>
               </div>
