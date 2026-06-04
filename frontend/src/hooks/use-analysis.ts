@@ -84,17 +84,30 @@ export function useAnalysis(): UseAnalysisReturn {
           }
 
           const statusResponse = await apiClient.getAnalysisStatus(analysisId);
+          const s = statusResponse.status.toUpperCase();
 
-          if (
-            statusResponse.status === "COMPLETED" ||
-            statusResponse.status === "completed"
-          ) {
+          // Simulate agent progress based on elapsed time
+          if (s === "PROCESSING") {
+            const elapsed = pollCountRef.current * POLL_INTERVAL_MS / 1000;
+            setAgentProgress((prev) =>
+              prev.map((ap, i) => {
+                if (i === 0 && elapsed >= 1) return { ...ap, status: "running" as const };
+                if (i === 0 && elapsed >= 8) return { ...ap, status: "complete" as const };
+                if (i >= 1 && i <= 4 && elapsed >= 10) return { ...ap, status: "running" as const };
+                if (i >= 1 && i <= 4 && elapsed >= 25) return { ...ap, status: "complete" as const };
+                if (i === 5 && elapsed >= 27) return { ...ap, status: "running" as const };
+                return ap;
+              })
+            );
+          }
+
+          if (s === "COMPLETED") {
             stopPolling();
+            setAgentProgress((prev) =>
+              prev.map((ap) => ({ ...ap, status: "complete" as const }))
+            );
             await fetchFinalResult(analysisId);
-          } else if (
-            statusResponse.status === "FAILED" ||
-            statusResponse.status === "failed"
-          ) {
+          } else if (s === "FAILED") {
             stopPolling();
             setStatus("error");
             setError("Analysis failed. Please try again.");
@@ -189,8 +202,8 @@ export function useAnalysis(): UseAnalysisReturn {
         const response = await apiClient.submitAnalysis(request);
         const analysisId = response.analysis_id;
 
-        // Try SSE streaming first, falls back to polling on error
-        startStreaming(analysisId);
+        // Use polling to track progress (SSE requires orchestrator integration)
+        pollForResult(analysisId);
       } catch (err) {
         setStatus("error");
         setError(
