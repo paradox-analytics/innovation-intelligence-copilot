@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useAnalysis } from "@/hooks/use-analysis";
 import {
   AlertTriangle,
   Bookmark,
@@ -36,7 +37,7 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // --- Agent definitions ---
 
@@ -72,169 +73,74 @@ const statusIcon: Record<AgentStatusValue, React.ReactNode> = {
   error: <XCircle className="h-3.5 w-3.5" />,
 };
 
-// --- Mock data ---
-
-const MOCK_SUPPORTING: EvidenceItem[] = [
-  {
-    id: "s1",
-    claim: "Precision fermentation market projected to reach $36.3B by 2030 with 48.1% CAGR (Grand View Research, 2024).",
-    source: "Grand View Research",
-    sourceUrl: "https://www.grandviewresearch.com",
-    relevance: "high",
-    type: "supporting",
-  },
-  {
-    id: "s2",
-    claim: "BASF already operates fermentation assets for amino acids and vitamins, providing infrastructure advantage for specialty chemicals expansion.",
-    source: "BASF Annual Report 2023",
-    relevance: "high",
-    type: "supporting",
-  },
-  {
-    id: "s3",
-    claim: "EU regulatory tailwinds (Green Deal Industrial Plan) provide subsidies for bio-based chemical production transition.",
-    source: "European Commission",
-    relevance: "medium",
-    type: "supporting",
-  },
-];
-
-const MOCK_CONTRARIAN: EvidenceItem[] = [
-  {
-    id: "c1",
-    claim: "Scale-up from lab to commercial fermentation remains the primary failure mode -- 60% of bio-based startups fail at this stage.",
-    source: "McKinsey Bio-Revolution Report",
-    relevance: "high",
-    type: "contrarian",
-  },
-  {
-    id: "c2",
-    claim: "Feedstock cost volatility (corn, sugarcane) could erode margins vs. established petrochemical routes during commodity cycles.",
-    source: "IHS Markit",
-    relevance: "medium",
-    type: "contrarian",
-  },
-];
-
-const MOCK_RISK_ITEMS: RiskItem[] = [
-  { id: "r1", label: "Scale-up execution", likelihood: 4, severity: 4, description: "60% failure rate at lab-to-commercial transition" },
-  { id: "r2", label: "Feedstock volatility", likelihood: 3, severity: 3, description: "Agricultural commodity cycles affect margins" },
-  { id: "r3", label: "Competitor moat", likelihood: 3, severity: 4, description: "Novozymes/DSM merger creates formidable competitor" },
-  { id: "r4", label: "Regulatory delays", likelihood: 2, severity: 3, description: "EU green chemistry certifications may take 18-36 months" },
-  { id: "r5", label: "Capital intensity", likelihood: 4, severity: 3, description: "Estimated $200-400M capex for dedicated facility" },
-];
-
-const MOCK_RISKS = [
-  "Scale-up execution risk: transitioning from pilot to commercial-scale fermentation has a 60% failure rate in the industry.",
-  "Feedstock price correlation with agricultural commodity markets introduces margin volatility.",
-  "Competitive moat: Novozymes/DSM merger creates formidable competitor with deeper fermentation expertise.",
-  "Regulatory timeline uncertainty: EU green chemistry certifications may take 18-36 months.",
-  "Capital intensity: estimated $200-400M capex for dedicated microbial fermentation facility.",
-];
-
-const MOCK_ASSUMPTIONS = [
-  "BASF can leverage existing fermentation infrastructure (amino acid/vitamin plants) for specialty chemicals.",
-  "EU regulatory environment will continue favorable trajectory for bio-based chemicals through 2030.",
-  "Customer willingness to pay 15-25% premium for bio-based specialty chemicals vs. petrochemical equivalents.",
-  "Microbial strain engineering will achieve target yields within 24-month development timeline.",
-  "No major IP infringement risks from Novozymes/DSM patent portfolio.",
-];
-
-const MOCK_SIGNALS: SignalCardData[] = [
-  {
-    id: "sig1",
-    name: "Precision Fermentation",
-    category: "Biotechnology",
-    strength: 87,
-    trend: "up",
-    horizon: "near",
-    description: "Rapid advancement in microbial strain engineering enabling cost-competitive production of specialty chemicals.",
-    readinessLevel: 6,
-  },
-  {
-    id: "sig2",
-    name: "Synthetic Biology Platforms",
-    category: "Biotechnology",
-    strength: 72,
-    trend: "up",
-    horizon: "mid",
-    description: "Programmable biology platforms reducing R&D timelines for novel chemical pathway development.",
-    readinessLevel: 5,
-  },
-  {
-    id: "sig3",
-    name: "Bio-based Surfactants",
-    category: "Materials",
-    strength: 65,
-    trend: "stable",
-    horizon: "near",
-    description: "Growing consumer and regulatory demand for bio-based alternatives to petrochemical surfactants.",
-    readinessLevel: 7,
-  },
-  {
-    id: "sig4",
-    name: "Carbon Capture Fermentation",
-    category: "Sustainability",
-    strength: 41,
-    trend: "up",
-    horizon: "far",
-    description: "Emerging methods to use captured CO2 as fermentation feedstock for chemical production.",
-    readinessLevel: 3,
-  },
-];
-
-const MOCK_FULL_REPORT = `# Strategic Analysis: BASF Investment in Microbial Fermentation for Specialty Chemicals
-
-## Executive Summary
-
-The microbial fermentation opportunity for specialty chemicals represents a strategically attractive but execution-dependent investment for BASF. Market fundamentals are strong: the precision fermentation sector is growing at 48% CAGR, EU regulatory tailwinds favor bio-based routes, and BASF possesses underutilized fermentation assets from its amino acid and vitamin businesses.
-
-## Recommendation
-
-**Proceed with a staged investment** in microbial fermentation for specialty chemicals. Begin with a $50-80M pilot facility leveraging existing amino acid fermentation infrastructure, targeting 2-3 high-margin specialty chemical categories where bio-based routes offer clear performance or regulatory advantages.
-
-## Market Context
-
-- Precision fermentation market: $36.3B by 2030 (48.1% CAGR)
-- Bio-based chemicals market: $98.5B in 2023 (10.2% CAGR)
-- EU Green Deal providing significant regulatory tailwinds
-
-## Risk Assessment
-
-The primary risk is scale-up execution. Industry data shows a 60% failure rate at the lab-to-commercial transition, and the Novozymes/DSM merger creates a formidable competitor with deeper fermentation expertise.
-
-## Strategic Recommendation
-
-A staged approach -- pilot first, then conditional full investment -- de-risks the capital commitment while preserving first-mover positioning in key specialty categories. Full scale-up should be gated on achieving 85%+ theoretical yield within 24 months.`;
-
-interface MockAgentStatus {
-  agent: string;
-  status: AgentStatusValue;
-  elapsed?: number;
-}
-
 interface SavedAnalysis {
   id: string;
   question: string;
   timestamp: string;
-  confidence: number;
+  confidence: number | null;
   bookmarked: boolean;
+}
+
+// --- Helpers to extract typed data from the result dict ---
+
+function extractEvidenceItems(
+  items: unknown,
+  type: "supporting" | "contrarian"
+): EvidenceItem[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item: Record<string, unknown>, i: number) => ({
+    id: String(item.id ?? `${type}-${i}`),
+    claim: String(item.claim ?? item.text ?? ""),
+    source: String(item.source ?? "Unknown"),
+    sourceUrl: item.source_url ? String(item.source_url) : undefined,
+    relevance: (item.relevance as "high" | "medium" | "low") ?? "medium",
+    type,
+  }));
+}
+
+function extractRiskItems(items: unknown): RiskItem[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item: Record<string, unknown>, i: number) => ({
+    id: String(item.id ?? `risk-${i}`),
+    label: String(item.label ?? item.name ?? `Risk ${i + 1}`),
+    likelihood: (Number(item.likelihood) || 3) as 1 | 2 | 3 | 4 | 5,
+    severity: (Number(item.severity) || 3) as 1 | 2 | 3 | 4 | 5,
+    description: item.description ? String(item.description) : undefined,
+  }));
+}
+
+function extractStrings(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => String(item));
+}
+
+function extractSignals(items: unknown): SignalCardData[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item: Record<string, unknown>, i: number) => ({
+    id: String(item.id ?? `sig-${i}`),
+    name: String(item.name ?? item.technology ?? ""),
+    category: String(item.category ?? item.signal_type ?? "Unknown"),
+    strength: Number(item.strength ?? item.signal_strength ?? 50),
+    trend: (item.trend as "up" | "down" | "stable") ?? "stable",
+    horizon: (item.horizon as "near" | "mid" | "far") ?? "mid",
+    description: String(item.description ?? ""),
+    readinessLevel: Number(item.readinessLevel ?? item.readiness_level ?? 5),
+  }));
 }
 
 // --- Page component ---
 
-type AnalysisPhase = "idle" | "loading" | "complete";
-
 export default function AnalyzePage() {
   const [question, setQuestion] = useState("");
-  const [phase, setPhase] = useState<AnalysisPhase>("idle");
-  const [agentStatuses, setAgentStatuses] = useState<MockAgentStatus[]>(
-    agents.map((a) => ({ agent: a.id, status: "waiting" as AgentStatusValue, elapsed: 0 }))
-  );
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([]);
   const [copied, setCopied] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const { result, status, error, agentProgress, submit, reset } = useAnalysis();
+
+  const isLoading = status === "submitting" || status === "streaming" || status === "polling";
+  const isComplete = status === "complete" && result !== null;
+  const isIdle = status === "idle";
 
   // Load saved analyses from localStorage
   useEffect(() => {
@@ -248,25 +154,42 @@ export default function AnalyzePage() {
     }
   }, []);
 
-  const saveToHistory = useCallback(
-    (q: string, confidence: number) => {
+  // Save to history when an analysis completes
+  useEffect(() => {
+    if (isComplete && result) {
       const entry: SavedAnalysis = {
-        id: `a-${Date.now()}`,
-        question: q,
-        timestamp: new Date().toISOString(),
-        confidence,
+        id: result.id,
+        question: result.query,
+        timestamp: result.created_at,
+        confidence: result.confidence_score,
         bookmarked: false,
       };
-      const updated = [entry, ...savedAnalyses].slice(0, 50);
-      setSavedAnalyses(updated);
-      try {
-        localStorage.setItem("iic-analyses", JSON.stringify(updated));
-      } catch {
-        // ignore
+      setSavedAnalyses((prev) => {
+        // avoid duplicates
+        const exists = prev.some((a) => a.id === entry.id);
+        if (exists) return prev;
+        const updated = [entry, ...prev].slice(0, 50);
+        try {
+          localStorage.setItem("iic-analyses", JSON.stringify(updated));
+        } catch {
+          // ignore
+        }
+        return updated;
+      });
+
+      // Cache the full result for the reports page
+      if (result.result) {
+        try {
+          localStorage.setItem(
+            `iic-analysis-${result.id}`,
+            JSON.stringify(result.result)
+          );
+        } catch {
+          // ignore (quota exceeded)
+        }
       }
-    },
-    [savedAnalyses]
-  );
+    }
+  }, [isComplete, result]);
 
   const toggleBookmark = useCallback(
     (id: string) => {
@@ -283,102 +206,59 @@ export default function AnalyzePage() {
     [savedAnalyses]
   );
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!question.trim()) return;
-    setPhase("loading");
-
-    const initialStatuses: MockAgentStatus[] = agents.map((a) => ({
-      agent: a.id,
-      status: "waiting" as AgentStatusValue,
-      elapsed: 0,
-    }));
-    setAgentStatuses(initialStatuses);
-
-    // Simulate agent pipeline: Research -> parallel -> Executive
-    // Step 1: Research starts
-    setTimeout(() => {
-      setAgentStatuses((prev) =>
-        prev.map((s) => (s.agent === "research" ? { ...s, status: "running" } : s))
-      );
-    }, 300);
-
-    // Step 2: Research completes, parallel agents start
-    setTimeout(() => {
-      setAgentStatuses((prev) =>
-        prev.map((s) => {
-          if (s.agent === "research") return { ...s, status: "complete", elapsed: 1.2 };
-          if (["support", "skeptic", "risk", "trend"].includes(s.agent))
-            return { ...s, status: "running" };
-          return s;
-        })
-      );
-    }, 1500);
-
-    // Step 3: Parallel agents complete staggered
-    setTimeout(() => {
-      setAgentStatuses((prev) =>
-        prev.map((s) =>
-          s.agent === "support" ? { ...s, status: "complete", elapsed: 0.8 } : s
-        )
-      );
-    }, 2200);
-
-    setTimeout(() => {
-      setAgentStatuses((prev) =>
-        prev.map((s) =>
-          s.agent === "skeptic" ? { ...s, status: "complete", elapsed: 1.1 } : s
-        )
-      );
-    }, 2600);
-
-    setTimeout(() => {
-      setAgentStatuses((prev) =>
-        prev.map((s) =>
-          s.agent === "risk" ? { ...s, status: "complete", elapsed: 1.4 } : s
-        )
-      );
-    }, 2900);
-
-    setTimeout(() => {
-      setAgentStatuses((prev) =>
-        prev.map((s) =>
-          s.agent === "trend" ? { ...s, status: "complete", elapsed: 1.0 } : s
-        )
-      );
-    }, 3000);
-
-    // Step 4: Executive starts and completes
-    setTimeout(() => {
-      setAgentStatuses((prev) =>
-        prev.map((s) =>
-          s.agent === "executive" ? { ...s, status: "running" } : s
-        )
-      );
-    }, 3200);
-
-    setTimeout(() => {
-      setAgentStatuses((prev) =>
-        prev.map((s) =>
-          s.agent === "executive" ? { ...s, status: "complete", elapsed: 0.9 } : s
-        )
-      );
-      setPhase("complete");
-      saveToHistory(question, 73);
-    }, 4200);
+    await submit({ query: question });
   };
 
   const handleReset = () => {
-    setPhase("idle");
+    reset();
     setQuestion("");
-    setAgentStatuses(
-      agents.map((a) => ({ agent: a.id, status: "waiting" as AgentStatusValue, elapsed: 0 }))
-    );
-    if (timerRef.current) clearInterval(timerRef.current);
   };
+
+  // Extract data from the analysis result
+  const analysisResult = result?.result as Record<string, unknown> | null;
+  const confidenceScore = result?.confidence_score ?? null;
+
+  const recommendation = analysisResult?.recommendation
+    ? String(analysisResult.recommendation)
+    : null;
+  const executiveSummary = analysisResult?.executive_summary
+    ? String(analysisResult.executive_summary)
+    : null;
+
+  const supportingEvidence = extractEvidenceItems(
+    analysisResult?.supporting_evidence,
+    "supporting"
+  );
+  const contrarianEvidence = extractEvidenceItems(
+    analysisResult?.contrarian_evidence,
+    "contrarian"
+  );
+  const riskItems = extractRiskItems(analysisResult?.risk_items);
+  const risks = extractStrings(analysisResult?.risks ?? analysisResult?.strategic_risks);
+  const assumptions = extractStrings(analysisResult?.key_assumptions);
+  const signals = extractSignals(analysisResult?.technology_signals);
+
+  // Build a full report text from sections
+  const fullReportText = [
+    `# Strategic Analysis: ${result?.query ?? question}`,
+    "",
+    executiveSummary ? `## Executive Summary\n\n${executiveSummary}` : "",
+    recommendation ? `## Recommendation\n\n${recommendation}` : "",
+    risks.length > 0
+      ? `## Risk Assessment\n\n${risks.map((r) => `- ${r}`).join("\n")}`
+      : "",
+    assumptions.length > 0
+      ? `## Key Assumptions\n\n${assumptions.map((a) => `- ${a}`).join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const handleCopyReport = async () => {
     try {
-      await navigator.clipboard.writeText(MOCK_FULL_REPORT);
+      await navigator.clipboard.writeText(fullReportText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -386,15 +266,30 @@ export default function AnalyzePage() {
     }
   };
 
-  const getRecommendationBadge = (confidence: number) => {
-    if (confidence >= 70)
+  const getRecommendationBadge = (confidence: number | null) => {
+    if (confidence === null) return { label: "Pending", variant: "default" as BadgeVariant };
+    if (confidence >= 0.7 || confidence >= 70)
       return { label: "Proceed", variant: "emerald" as BadgeVariant };
-    if (confidence >= 50)
+    if (confidence >= 0.5 || confidence >= 50)
       return { label: "Caution", variant: "amber" as BadgeVariant };
     return { label: "Avoid", variant: "rose" as BadgeVariant };
   };
 
-  const recommendation = getRecommendationBadge(73);
+  const recBadge = getRecommendationBadge(confidenceScore);
+  // Normalize score to 0-100 for gauge display
+  const gaugeScore =
+    confidenceScore !== null
+      ? confidenceScore <= 1
+        ? Math.round(confidenceScore * 100)
+        : Math.round(confidenceScore)
+      : 0;
+
+  // Map agent progress to display status
+  const getAgentStatus = (agentId: string): AgentStatusValue => {
+    const progress = agentProgress.find((ap) => ap.agent === agentId);
+    if (!progress) return "waiting";
+    return progress.status;
+  };
 
   return (
     <DashboardLayout>
@@ -432,7 +327,14 @@ export default function AnalyzePage() {
                       </p>
                       <div className="mt-1 flex items-center gap-2 text-[10px] text-text-muted">
                         <span>{new Date(analysis.timestamp).toLocaleDateString()}</span>
-                        <span>{analysis.confidence}% confidence</span>
+                        {analysis.confidence !== null && (
+                          <span>
+                            {analysis.confidence <= 1
+                              ? `${Math.round(analysis.confidence * 100)}%`
+                              : `${Math.round(analysis.confidence)}%`}{" "}
+                            confidence
+                          </span>
+                        )}
                       </div>
                     </div>
                     <button
@@ -503,14 +405,19 @@ export default function AnalyzePage() {
                       "focus:outline-none focus:ring-2 focus:ring-accent-blue focus:ring-offset-1 focus:ring-offset-bg-primary",
                       "transition-colors duration-200"
                     )}
-                    disabled={phase === "loading"}
+                    disabled={isLoading}
                   />
+                  {error && (
+                    <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/5 p-3 text-sm text-accent-rose">
+                      {error}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-text-muted">
                       Be specific about the company, technology, and strategic decision.
                     </p>
                     <div className="flex gap-2">
-                      {phase !== "idle" && (
+                      {!isIdle && (
                         <Button variant="ghost" onClick={handleReset}>
                           <RefreshCw className="h-4 w-4" />
                           Reset
@@ -518,14 +425,14 @@ export default function AnalyzePage() {
                       )}
                       <Button
                         onClick={handleSubmit}
-                        disabled={!question.trim() || phase === "loading"}
+                        disabled={!question.trim() || isLoading}
                       >
-                        {phase === "loading" ? (
+                        {isLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <Send className="h-4 w-4" />
                         )}
-                        {phase === "loading" ? "Analyzing..." : "Analyze"}
+                        {isLoading ? "Analyzing..." : "Analyze"}
                       </Button>
                     </div>
                   </div>
@@ -534,7 +441,7 @@ export default function AnalyzePage() {
             </Card>
 
             {/* Agent Pipeline Visualization */}
-            {phase !== "idle" && (
+            {!isIdle && (
               <Card className="animate-fade-in overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
@@ -547,16 +454,15 @@ export default function AnalyzePage() {
                   <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2">
                     {/* Research (initial) */}
                     {(() => {
-                      const researchStatus = agentStatuses.find((s) => s.agent === "research");
-                      const status = researchStatus?.status || "waiting";
-                      const badgeInfo = statusBadge[status];
+                      const agentStatus = getAgentStatus("research");
+                      const badgeInfo = statusBadge[agentStatus];
                       return (
                         <div
                           className={cn(
                             "flex flex-col items-center gap-2 rounded-lg border p-3 min-w-[100px] transition-all duration-300",
-                            status === "running" && "border-accent-blue/50 bg-accent-blue/5 shadow-lg shadow-accent-blue/10 animate-pulse-subtle",
-                            status === "complete" && "border-accent-emerald/30 bg-accent-emerald/5",
-                            status === "waiting" && "border-border-default bg-bg-tertiary"
+                            agentStatus === "running" && "border-accent-blue/50 bg-accent-blue/5 shadow-lg shadow-accent-blue/10 animate-pulse-subtle",
+                            agentStatus === "complete" && "border-accent-emerald/30 bg-accent-emerald/5",
+                            agentStatus === "waiting" && "border-border-default bg-bg-tertiary"
                           )}
                         >
                           <div className="flex items-center gap-1.5 text-text-primary">
@@ -564,14 +470,9 @@ export default function AnalyzePage() {
                             <span className="text-xs font-medium">Research</span>
                           </div>
                           <Badge variant={badgeInfo.variant} className="gap-1">
-                            {statusIcon[status]}
+                            {statusIcon[agentStatus]}
                             {badgeInfo.label}
                           </Badge>
-                          {researchStatus?.elapsed ? (
-                            <span className="text-[10px] text-text-muted">
-                              {researchStatus.elapsed.toFixed(1)}s
-                            </span>
-                          ) : null}
                         </div>
                       );
                     })()}
@@ -584,19 +485,16 @@ export default function AnalyzePage() {
                       {agents
                         .filter((a) => a.phase === "parallel")
                         .map((agent) => {
-                          const agentStatus = agentStatuses.find(
-                            (s) => s.agent === agent.id
-                          );
-                          const status = agentStatus?.status || "waiting";
-                          const badgeInfo = statusBadge[status];
+                          const agentStatus = getAgentStatus(agent.id);
+                          const badgeInfo = statusBadge[agentStatus];
                           return (
                             <div
                               key={agent.id}
                               className={cn(
                                 "flex flex-col items-center gap-2 rounded-lg border p-3 min-w-[90px] transition-all duration-300",
-                                status === "running" && "border-accent-blue/50 bg-accent-blue/5 shadow-lg shadow-accent-blue/10 animate-pulse-subtle",
-                                status === "complete" && "border-accent-emerald/30 bg-accent-emerald/5",
-                                status === "waiting" && "border-border-default bg-bg-tertiary"
+                                agentStatus === "running" && "border-accent-blue/50 bg-accent-blue/5 shadow-lg shadow-accent-blue/10 animate-pulse-subtle",
+                                agentStatus === "complete" && "border-accent-emerald/30 bg-accent-emerald/5",
+                                agentStatus === "waiting" && "border-border-default bg-bg-tertiary"
                               )}
                             >
                               <div className="flex items-center gap-1.5 text-text-primary">
@@ -606,14 +504,9 @@ export default function AnalyzePage() {
                                 </span>
                               </div>
                               <Badge variant={badgeInfo.variant} className="gap-1 text-[10px]">
-                                {statusIcon[status]}
+                                {statusIcon[agentStatus]}
                                 {badgeInfo.label}
                               </Badge>
-                              {agentStatus?.elapsed ? (
-                                <span className="text-[10px] text-text-muted">
-                                  {agentStatus.elapsed.toFixed(1)}s
-                                </span>
-                              ) : null}
                             </div>
                           );
                         })}
@@ -624,16 +517,15 @@ export default function AnalyzePage() {
 
                     {/* Executive (final) */}
                     {(() => {
-                      const execStatus = agentStatuses.find((s) => s.agent === "executive");
-                      const status = execStatus?.status || "waiting";
-                      const badgeInfo = statusBadge[status];
+                      const agentStatus = getAgentStatus("executive");
+                      const badgeInfo = statusBadge[agentStatus];
                       return (
                         <div
                           className={cn(
                             "flex flex-col items-center gap-2 rounded-lg border p-3 min-w-[100px] transition-all duration-300",
-                            status === "running" && "border-accent-blue/50 bg-accent-blue/5 shadow-lg shadow-accent-blue/10 animate-pulse-subtle",
-                            status === "complete" && "border-accent-emerald/30 bg-accent-emerald/5",
-                            status === "waiting" && "border-border-default bg-bg-tertiary"
+                            agentStatus === "running" && "border-accent-blue/50 bg-accent-blue/5 shadow-lg shadow-accent-blue/10 animate-pulse-subtle",
+                            agentStatus === "complete" && "border-accent-emerald/30 bg-accent-emerald/5",
+                            agentStatus === "waiting" && "border-border-default bg-bg-tertiary"
                           )}
                         >
                           <div className="flex items-center gap-1.5 text-text-primary">
@@ -641,14 +533,9 @@ export default function AnalyzePage() {
                             <span className="text-xs font-medium">Executive</span>
                           </div>
                           <Badge variant={badgeInfo.variant} className="gap-1">
-                            {statusIcon[status]}
+                            {statusIcon[agentStatus]}
                             {badgeInfo.label}
                           </Badge>
-                          {execStatus?.elapsed ? (
-                            <span className="text-[10px] text-text-muted">
-                              {execStatus.elapsed.toFixed(1)}s
-                            </span>
-                          ) : null}
                         </div>
                       );
                     })()}
@@ -658,7 +545,7 @@ export default function AnalyzePage() {
             )}
 
             {/* Loading skeleton */}
-            {phase === "loading" && (
+            {isLoading && (
               <div className="space-y-6 animate-fade-in">
                 <Card>
                   <CardContent className="p-6 space-y-4">
@@ -671,15 +558,47 @@ export default function AnalyzePage() {
               </div>
             )}
 
+            {/* Error state */}
+            {status === "error" && error && !isLoading && (
+              <Card className="animate-fade-in border-accent-rose/30">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-3">
+                    <XCircle className="h-5 w-5 text-accent-rose shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">
+                        Analysis Failed
+                      </p>
+                      <p className="mt-1 text-sm text-text-secondary">{error}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={handleSubmit}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Results with Tabs */}
-            {phase === "complete" && (
+            {isComplete && (
               <div className="space-y-6 animate-fade-in">
                 <Tabs defaultValue="overview">
                   <TabsList className="w-fit">
                     <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="evidence">Evidence</TabsTrigger>
-                    <TabsTrigger value="risks">Risks</TabsTrigger>
-                    <TabsTrigger value="signals">Signals</TabsTrigger>
+                    {(supportingEvidence.length > 0 || contrarianEvidence.length > 0) && (
+                      <TabsTrigger value="evidence">Evidence</TabsTrigger>
+                    )}
+                    {(risks.length > 0 || riskItems.length > 0) && (
+                      <TabsTrigger value="risks">Risks</TabsTrigger>
+                    )}
+                    {signals.length > 0 && (
+                      <TabsTrigger value="signals">Signals</TabsTrigger>
+                    )}
                     <TabsTrigger value="report">Full Report</TabsTrigger>
                   </TabsList>
 
@@ -690,150 +609,157 @@ export default function AnalyzePage() {
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <CardTitle>Recommendation</CardTitle>
-                          <Badge variant={recommendation.variant} className="text-sm px-3 py-1">
-                            {recommendation.label}
+                          <Badge variant={recBadge.variant} className="text-sm px-3 py-1">
+                            {recBadge.label}
                           </Badge>
                         </div>
                       </CardHeader>
                       <CardContent>
                         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
                           <div className="flex-1">
-                            <p className="text-base leading-relaxed text-text-primary">
-                              <strong>Proceed with a staged investment</strong> in
-                              microbial fermentation for specialty chemicals. Begin with
-                              a $50-80M pilot facility leveraging existing amino acid
-                              fermentation infrastructure, targeting 2-3 high-margin
-                              specialty chemical categories where bio-based routes offer
-                              clear performance or regulatory advantages.
-                            </p>
+                            {recommendation ? (
+                              <p className="text-base leading-relaxed text-text-primary">
+                                {recommendation}
+                              </p>
+                            ) : (
+                              <p className="text-sm text-text-muted italic">
+                                No recommendation available.
+                              </p>
+                            )}
                           </div>
-                          <div className="flex-shrink-0">
-                            <ConfidenceGauge score={73} size={140} />
-                          </div>
+                          {confidenceScore !== null && (
+                            <div className="flex-shrink-0">
+                              <ConfidenceGauge score={gaugeScore} size={140} />
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
 
                     {/* Executive Summary */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Brain className="h-5 w-5 text-accent-blue" />
-                          Executive Summary
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-4 text-sm leading-relaxed text-text-secondary">
-                          <p>
-                            The microbial fermentation opportunity for specialty chemicals
-                            represents a strategically attractive but execution-dependent
-                            investment for BASF. Market fundamentals are strong: the
-                            precision fermentation sector is growing at 48% CAGR, EU
-                            regulatory tailwinds favor bio-based routes, and BASF possesses
-                            underutilized fermentation assets from its amino acid and
-                            vitamin businesses.
-                          </p>
-                          <p>
-                            However, the primary risk is scale-up execution. A staged
-                            approach -- pilot first, then conditional full investment --
-                            de-risks the capital commitment while preserving first-mover
-                            positioning in key specialty categories.
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    {executiveSummary && (
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Brain className="h-5 w-5 text-accent-blue" />
+                            Executive Summary
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4 text-sm leading-relaxed text-text-secondary">
+                            <p>{executiveSummary}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
 
                     {/* Key Assumptions */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Shield className="h-5 w-5 text-accent-violet" />
-                          Key Assumptions
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ul className="space-y-2">
-                          {MOCK_ASSUMPTIONS.map((assumption, i) => (
-                            <li
-                              key={i}
-                              className="flex items-start gap-2 text-sm text-text-secondary"
-                            >
-                              <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent-violet" />
-                              {assumption}
-                            </li>
-                          ))}
-                        </ul>
-                      </CardContent>
-                    </Card>
+                    {assumptions.length > 0 && (
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Shield className="h-5 w-5 text-accent-violet" />
+                            Key Assumptions
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ul className="space-y-2">
+                            {assumptions.map((assumption, i) => (
+                              <li
+                                key={i}
+                                className="flex items-start gap-2 text-sm text-text-secondary"
+                              >
+                                <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent-violet" />
+                                {assumption}
+                              </li>
+                            ))}
+                          </ul>
+                        </CardContent>
+                      </Card>
+                    )}
                   </TabsContent>
 
                   {/* Evidence Tab */}
-                  <TabsContent value="evidence" className="mt-6">
-                    <div className="grid gap-6 lg:grid-cols-2">
-                      <Card>
-                        <CardContent className="p-6">
-                          <EvidenceList
-                            title="Supporting Evidence"
-                            items={MOCK_SUPPORTING}
-                          />
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-6">
-                          <EvidenceList
-                            title="Contrarian Evidence"
-                            items={MOCK_CONTRARIAN}
-                          />
-                        </CardContent>
-                      </Card>
-                    </div>
-                  </TabsContent>
+                  {(supportingEvidence.length > 0 || contrarianEvidence.length > 0) && (
+                    <TabsContent value="evidence" className="mt-6">
+                      <div className="grid gap-6 lg:grid-cols-2">
+                        {supportingEvidence.length > 0 && (
+                          <Card>
+                            <CardContent className="p-6">
+                              <EvidenceList
+                                title="Supporting Evidence"
+                                items={supportingEvidence}
+                              />
+                            </CardContent>
+                          </Card>
+                        )}
+                        {contrarianEvidence.length > 0 && (
+                          <Card>
+                            <CardContent className="p-6">
+                              <EvidenceList
+                                title="Contrarian Evidence"
+                                items={contrarianEvidence}
+                              />
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </TabsContent>
+                  )}
 
                   {/* Risks Tab */}
-                  <TabsContent value="risks" className="mt-6 space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <AlertTriangle className="h-5 w-5 text-accent-amber" />
-                          Risk Matrix
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <RiskMatrix items={MOCK_RISK_ITEMS} />
-                      </CardContent>
-                    </Card>
+                  {(risks.length > 0 || riskItems.length > 0) && (
+                    <TabsContent value="risks" className="mt-6 space-y-6">
+                      {riskItems.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <AlertTriangle className="h-5 w-5 text-accent-amber" />
+                              Risk Matrix
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <RiskMatrix items={riskItems} />
+                          </CardContent>
+                        </Card>
+                      )}
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <AlertTriangle className="h-5 w-5 text-accent-amber" />
-                          Strategic Risks
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ul className="space-y-2">
-                          {MOCK_RISKS.map((risk, i) => (
-                            <li
-                              key={i}
-                              className="flex items-start gap-2 text-sm text-text-secondary"
-                            >
-                              <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent-amber" />
-                              {risk}
-                            </li>
-                          ))}
-                        </ul>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
+                      {risks.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <AlertTriangle className="h-5 w-5 text-accent-amber" />
+                              Strategic Risks
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <ul className="space-y-2">
+                              {risks.map((risk, i) => (
+                                <li
+                                  key={i}
+                                  className="flex items-start gap-2 text-sm text-text-secondary"
+                                >
+                                  <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent-amber" />
+                                  {risk}
+                                </li>
+                              ))}
+                            </ul>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </TabsContent>
+                  )}
 
                   {/* Signals Tab */}
-                  <TabsContent value="signals" className="mt-6">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {MOCK_SIGNALS.map((signal) => (
-                        <SignalCard key={signal.id} signal={signal} />
-                      ))}
-                    </div>
-                  </TabsContent>
+                  {signals.length > 0 && (
+                    <TabsContent value="signals" className="mt-6">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {signals.map((signal) => (
+                          <SignalCard key={signal.id} signal={signal} />
+                        ))}
+                      </div>
+                    </TabsContent>
+                  )}
 
                   {/* Full Report Tab */}
                   <TabsContent value="report" className="mt-6">
@@ -863,7 +789,7 @@ export default function AnalyzePage() {
                       <CardContent>
                         <div className="prose prose-invert max-w-none rounded-lg bg-bg-tertiary p-6">
                           <pre className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary font-sans">
-                            {MOCK_FULL_REPORT}
+                            {fullReportText}
                           </pre>
                         </div>
                       </CardContent>

@@ -8,6 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 import {
+  apiClient,
+  getToken,
+} from "@/lib/api";
+import {
+  AlertCircle,
   Bell,
   Check,
   ClipboardCopy,
@@ -15,6 +20,8 @@ import {
   Eye,
   EyeOff,
   Key,
+  Loader2,
+  LogIn,
   Moon,
   Plus,
   Save,
@@ -22,7 +29,7 @@ import {
   Trash2,
   User,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // --- Types ---
 
@@ -35,49 +42,29 @@ interface ApiKey {
   active: boolean;
 }
 
-// --- Mock data ---
-
-const MOCK_API_KEYS: ApiKey[] = [
-  {
-    id: "key1",
-    name: "Production",
-    key: "iic_prod_sk_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
-    createdAt: "2024-01-10",
-    lastUsed: "2024-01-22",
-    active: true,
-  },
-  {
-    id: "key2",
-    name: "Development",
-    key: "iic_dev_sk_z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4",
-    createdAt: "2024-01-05",
-    lastUsed: "2024-01-21",
-    active: true,
-  },
-  {
-    id: "key3",
-    name: "Testing (deprecated)",
-    key: "iic_test_sk_j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6",
-    createdAt: "2023-12-15",
-    lastUsed: null,
-    active: false,
-  },
-];
-
 export default function SettingsPage() {
+  // Auth state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
+
   // Profile
-  const [name, setName] = useState("Admin User");
-  const [email, setEmail] = useState("admin@company.com");
-  const [role] = useState("Administrator");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("");
   const [profileSaved, setProfileSaved] = useState(false);
 
   // API Keys
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>(MOCK_API_KEYS);
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [showKeys, setShowKeys] = useState<Set<string>>(new Set());
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
+  const [generatingKey, setGeneratingKey] = useState(false);
 
-  // Notifications
+  // Notifications (stored locally)
   const [notifyAnalysisComplete, setNotifyAnalysisComplete] = useState(true);
   const [notifyDocumentProcessed, setNotifyDocumentProcessed] = useState(true);
   const [notifyWeeklyDigest, setNotifyWeeklyDigest] = useState(false);
@@ -88,7 +75,116 @@ export default function SettingsPage() {
   // Theme
   const [darkMode, setDarkMode] = useState(true);
 
+  // Check auth on mount
+  const checkAuth = useCallback(async () => {
+    setAuthLoading(true);
+    const token = getToken();
+    if (!token) {
+      setIsAuthenticated(false);
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      const user = await apiClient.getMe();
+      setName(user.full_name);
+      setEmail(user.email);
+      setRole(user.role);
+      setIsAuthenticated(true);
+    } catch {
+      // Token might be expired
+      setIsAuthenticated(false);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  // Load notification preferences from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("iic-notification-prefs");
+      if (stored) {
+        const prefs = JSON.parse(stored) as Record<string, boolean>;
+        if (prefs.analysisComplete !== undefined)
+          setNotifyAnalysisComplete(prefs.analysisComplete);
+        if (prefs.documentProcessed !== undefined)
+          setNotifyDocumentProcessed(prefs.documentProcessed);
+        if (prefs.weeklyDigest !== undefined)
+          setNotifyWeeklyDigest(prefs.weeklyDigest);
+        if (prefs.entityDiscovered !== undefined)
+          setNotifyEntityDiscovered(prefs.entityDiscovered);
+        if (prefs.email !== undefined) setNotifyEmail(prefs.email);
+        if (prefs.browser !== undefined) setNotifyBrowser(prefs.browser);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Save notification prefs when they change
+  const saveNotificationPrefs = useCallback(() => {
+    try {
+      localStorage.setItem(
+        "iic-notification-prefs",
+        JSON.stringify({
+          analysisComplete: notifyAnalysisComplete,
+          documentProcessed: notifyDocumentProcessed,
+          weeklyDigest: notifyWeeklyDigest,
+          entityDiscovered: notifyEntityDiscovered,
+          email: notifyEmail,
+          browser: notifyBrowser,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    notifyAnalysisComplete,
+    notifyDocumentProcessed,
+    notifyWeeklyDigest,
+    notifyEntityDiscovered,
+    notifyEmail,
+    notifyBrowser,
+  ]);
+
+  useEffect(() => {
+    saveNotificationPrefs();
+  }, [saveNotificationPrefs]);
+
+  const handleLogin = async () => {
+    if (!loginEmail.trim() || !loginPassword.trim()) return;
+    setLoginLoading(true);
+    setLoginError(null);
+
+    try {
+      await apiClient.login({ email: loginEmail, password: loginPassword });
+      await checkAuth();
+      setLoginEmail("");
+      setLoginPassword("");
+    } catch (err) {
+      setLoginError(
+        err instanceof Error ? err.message : "Login failed"
+      );
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    apiClient.logout();
+    setIsAuthenticated(false);
+    setName("");
+    setEmail("");
+    setRole("");
+    setApiKeys([]);
+  };
+
   const handleProfileSave = () => {
+    // Profile save is a no-op since we don't have a PATCH /auth/me endpoint
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2000);
   };
@@ -112,23 +208,27 @@ export default function SettingsPage() {
     }
   };
 
-  const generateKey = () => {
+  const generateKey = async () => {
     if (!newKeyName.trim()) return;
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let randomPart = "";
-    for (let i = 0; i < 32; i++) {
-      randomPart += chars[Math.floor(Math.random() * chars.length)];
+    setGeneratingKey(true);
+
+    try {
+      const response = await apiClient.generateApiKey();
+      const newKey: ApiKey = {
+        id: `key-${Date.now()}`,
+        name: newKeyName.trim(),
+        key: response.api_key,
+        createdAt: new Date().toISOString().split("T")[0],
+        lastUsed: null,
+        active: true,
+      };
+      setApiKeys((prev) => [...prev, newKey]);
+      setNewKeyName("");
+    } catch (err) {
+      console.error("Failed to generate API key:", err);
+    } finally {
+      setGeneratingKey(false);
     }
-    const newKey: ApiKey = {
-      id: `key-${Date.now()}`,
-      name: newKeyName.trim(),
-      key: `iic_new_sk_${randomPart}`,
-      createdAt: new Date().toISOString().split("T")[0],
-      lastUsed: null,
-      active: true,
-    };
-    setApiKeys((prev) => [...prev, newKey]);
-    setNewKeyName("");
   };
 
   const revokeKey = (id: string) => {
@@ -162,15 +262,96 @@ export default function SettingsPage() {
     URL.revokeObjectURL(url);
   }, []);
 
+  // Auth loading state
+  if (authLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="h-8 w-8 animate-spin text-accent-blue" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Not authenticated - show login form
+  if (!isAuthenticated) {
+    return (
+      <DashboardLayout>
+        <div className="mx-auto max-w-md space-y-8 p-6 pt-20">
+          <div className="text-center">
+            <LogIn className="mx-auto h-12 w-12 text-accent-blue" />
+            <h1 className="mt-4 text-2xl font-bold text-text-primary">
+              Sign In
+            </h1>
+            <p className="mt-1 text-text-secondary">
+              Sign in to manage your account settings and API keys.
+            </p>
+          </div>
+
+          <Card>
+            <CardContent className="p-6 space-y-4">
+              {loginError && (
+                <div className="flex items-start gap-2 rounded-lg border border-accent-rose/30 bg-accent-rose/5 p-3 text-sm text-accent-rose">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  {loginError}
+                </div>
+              )}
+              <Input
+                label="Email"
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="admin@company.com"
+              />
+              <Input
+                label="Password"
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="Enter your password"
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              />
+              <Button
+                className="w-full"
+                onClick={handleLogin}
+                disabled={
+                  loginLoading ||
+                  !loginEmail.trim() ||
+                  !loginPassword.trim()
+                }
+              >
+                {loginLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogIn className="h-4 w-4" />
+                )}
+                {loginLoading ? "Signing in..." : "Sign In"}
+              </Button>
+              <p className="text-center text-xs text-text-muted">
+                Settings and API keys require authentication. Other features
+                work without signing in.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-3xl space-y-8 p-6">
         {/* Page header */}
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
-          <p className="mt-1 text-text-secondary">
-            Manage your account, API keys, and preferences.
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
+            <p className="mt-1 text-text-secondary">
+              Manage your account, API keys, and preferences.
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            Sign Out
+          </Button>
         </div>
 
         {/* Profile */}
@@ -192,13 +373,14 @@ export default function SettingsPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled
             />
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-text-secondary">
                 Role
               </label>
               <div className="flex items-center gap-2">
-                <Badge variant="blue">{role}</Badge>
+                <Badge variant="blue">{role || "User"}</Badge>
                 <span className="text-xs text-text-muted">
                   Contact your administrator to change roles
                 </span>
@@ -242,94 +424,110 @@ export default function SettingsPage() {
               <Button
                 size="md"
                 onClick={generateKey}
-                disabled={!newKeyName.trim()}
+                disabled={!newKeyName.trim() || generatingKey}
                 className="shrink-0"
               >
-                <Plus className="h-4 w-4" />
+                {generatingKey ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
                 Generate
               </Button>
             </div>
 
             {/* Key list */}
-            <div className="space-y-3">
-              {apiKeys.map((apiKey) => (
-                <div
-                  key={apiKey.id}
-                  className={cn(
-                    "rounded-lg border p-4 transition-colors",
-                    apiKey.active
-                      ? "border-border-default bg-bg-tertiary"
-                      : "border-border-default/50 bg-bg-tertiary/50 opacity-60"
-                  )}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-text-primary">
-                          {apiKey.name}
-                        </span>
-                        <Badge
-                          variant={apiKey.active ? "emerald" : "default"}
-                        >
-                          {apiKey.active ? "Active" : "Revoked"}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs text-text-muted font-mono">
-                          {showKeys.has(apiKey.id)
-                            ? apiKey.key
-                            : apiKey.key.slice(0, 12) + "..." + apiKey.key.slice(-4)}
-                        </code>
-                        <button
-                          onClick={() => toggleKeyVisibility(apiKey.id)}
-                          className="text-text-muted hover:text-text-secondary"
-                          aria-label={showKeys.has(apiKey.id) ? "Hide key" : "Show key"}
-                        >
-                          {showKeys.has(apiKey.id) ? (
-                            <EyeOff className="h-3.5 w-3.5" />
-                          ) : (
-                            <Eye className="h-3.5 w-3.5" />
+            {apiKeys.length === 0 ? (
+              <div className="py-8 text-center text-sm text-text-muted">
+                No API keys generated yet. Create one above.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {apiKeys.map((apiKey) => (
+                  <div
+                    key={apiKey.id}
+                    className={cn(
+                      "rounded-lg border p-4 transition-colors",
+                      apiKey.active
+                        ? "border-border-default bg-bg-tertiary"
+                        : "border-border-default/50 bg-bg-tertiary/50 opacity-60"
+                    )}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-text-primary">
+                            {apiKey.name}
+                          </span>
+                          <Badge
+                            variant={apiKey.active ? "emerald" : "default"}
+                          >
+                            {apiKey.active ? "Active" : "Revoked"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs text-text-muted font-mono">
+                            {showKeys.has(apiKey.id)
+                              ? apiKey.key
+                              : apiKey.key.slice(0, 12) +
+                                "..." +
+                                apiKey.key.slice(-4)}
+                          </code>
+                          <button
+                            onClick={() => toggleKeyVisibility(apiKey.id)}
+                            className="text-text-muted hover:text-text-secondary"
+                            aria-label={
+                              showKeys.has(apiKey.id) ? "Hide key" : "Show key"
+                            }
+                          >
+                            {showKeys.has(apiKey.id) ? (
+                              <EyeOff className="h-3.5 w-3.5" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => copyKey(apiKey.key, apiKey.id)}
+                            className="text-text-muted hover:text-text-secondary"
+                            aria-label="Copy key"
+                          >
+                            {copiedKey === apiKey.id ? (
+                              <Check className="h-3.5 w-3.5 text-accent-emerald" />
+                            ) : (
+                              <ClipboardCopy className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-text-muted">
+                          <span>Created {apiKey.createdAt}</span>
+                          {apiKey.lastUsed && (
+                            <span>Last used {apiKey.lastUsed}</span>
                           )}
-                        </button>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        {apiKey.active && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => revokeKey(apiKey.id)}
+                          >
+                            Revoke
+                          </Button>
+                        )}
                         <button
-                          onClick={() => copyKey(apiKey.key, apiKey.id)}
-                          className="text-text-muted hover:text-text-secondary"
-                          aria-label="Copy key"
+                          onClick={() => deleteKey(apiKey.id)}
+                          className="rounded p-1.5 text-text-muted hover:bg-accent-rose/10 hover:text-accent-rose transition-colors"
+                          aria-label="Delete key"
                         >
-                          {copiedKey === apiKey.id ? (
-                            <Check className="h-3.5 w-3.5 text-accent-emerald" />
-                          ) : (
-                            <ClipboardCopy className="h-3.5 w-3.5" />
-                          )}
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-text-muted">
-                        <span>Created {apiKey.createdAt}</span>
-                        {apiKey.lastUsed && <span>Last used {apiKey.lastUsed}</span>}
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      {apiKey.active && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => revokeKey(apiKey.id)}
-                        >
-                          Revoke
-                        </Button>
-                      )}
-                      <button
-                        onClick={() => deleteKey(apiKey.id)}
-                        className="rounded p-1.5 text-text-muted hover:bg-accent-rose/10 hover:text-accent-rose transition-colors"
-                        aria-label="Delete key"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -343,7 +541,9 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-3">
-              <p className="text-xs font-medium uppercase text-text-muted">Events</p>
+              <p className="text-xs font-medium uppercase text-text-muted">
+                Events
+              </p>
               <Toggle
                 checked={notifyAnalysisComplete}
                 onChange={setNotifyAnalysisComplete}
@@ -370,7 +570,9 @@ export default function SettingsPage() {
               />
             </div>
             <div className="border-t border-border-default pt-4 space-y-3">
-              <p className="text-xs font-medium uppercase text-text-muted">Channels</p>
+              <p className="text-xs font-medium uppercase text-text-muted">
+                Channels
+              </p>
               <Toggle
                 checked={notifyEmail}
                 onChange={setNotifyEmail}
@@ -417,7 +619,8 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-text-secondary">
-              Download a JSON export of all your analyses, documents, and entities.
+              Download a JSON export of all your analyses, documents, and
+              entities.
             </p>
             <Button
               variant="outline"

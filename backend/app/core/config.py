@@ -32,10 +32,24 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # LLM Models
+    DEFAULT_LLM_PROVIDER: str = "anthropic"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    OPENAI_MODEL: str = "gpt-4o"
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+
+    # Sync DB URL (for alembic)
+    DATABASE_URL_SYNC: str = ""
+
+    # Frontend
+    FRONTEND_URL: str = "http://localhost:3000"
+    NEXT_PUBLIC_API_URL: str = "http://localhost:8000/api/v1"
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": True,
+        "extra": "ignore",
     }
 
 

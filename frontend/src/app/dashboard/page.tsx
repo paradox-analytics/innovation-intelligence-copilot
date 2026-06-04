@@ -1,17 +1,14 @@
 "use client";
 
 import { DashboardLayout } from "@/components/dashboard/layout";
-import {
-  ActivityFeed,
-  type ActivityItem,
-} from "@/components/dashboard/activity-feed";
 import { StatsCard } from "@/components/dashboard/stats-card";
-import { SignalCard, type SignalCardData } from "@/components/reports/signal-card";
 import { ConfidenceGauge } from "@/components/reports/confidence-gauge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { apiClient } from "@/lib/api";
 import {
+  AlertCircle,
   Brain,
   ChevronRight,
   FileText,
@@ -19,138 +16,115 @@ import {
   Search,
   Send,
   Sparkles,
-  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-// --- Mock data ---
+// --- Helpers ---
 
-const MOCK_ACTIVITY: ActivityItem[] = [
-  {
-    id: "act1",
-    action: "analysis_completed",
-    title: "Analysis completed: BASF fermentation investment",
-    description: "73% confidence -- Proceed recommended",
-    timestamp: new Date(Date.now() - 1000 * 60 * 23).toISOString(),
-    user: "Admin",
-  },
-  {
-    id: "act2",
-    action: "document_uploaded",
-    title: "McKinsey Bio-Revolution Report uploaded",
-    description: "64 pages, 45 entities extracted",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    user: "Admin",
-  },
-  {
-    id: "act3",
-    action: "entity_discovered",
-    title: "New entity discovered: Carbon Capture Fermentation",
-    description: "Technology node added to knowledge graph",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-  },
-  {
-    id: "act4",
-    action: "analysis_started",
-    title: "Analysis started: AI drug discovery landscape",
-    description: "6 agents deployed",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString(),
-    user: "Admin",
-  },
-  {
-    id: "act5",
-    action: "report_generated",
-    title: "Report generated: SE Asia renewable energy",
-    description: "81% confidence -- Proceed recommended",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-    user: "Admin",
-  },
-  {
-    id: "act6",
-    action: "document_uploaded",
-    title: "Solugen Series C Pitch Deck uploaded",
-    description: "28 pages, processing complete",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-    user: "Admin",
-  },
-];
-
-const RECENT_ANALYSES = [
-  {
-    id: "a1",
-    question: "Should BASF invest in microbial fermentation for specialty chemicals?",
-    confidence: 73,
-    date: "2024-01-22",
-    status: "complete" as const,
-  },
-  {
-    id: "a2",
-    question: "AI-powered drug discovery competitive landscape in oncology?",
-    confidence: 68,
-    date: "2024-01-20",
-    status: "complete" as const,
-  },
-  {
-    id: "a3",
-    question: "Acquisition of TechStartup Inc. quantum computing portfolio?",
-    confidence: 52,
-    date: "2024-01-18",
-    status: "complete" as const,
-  },
-  {
-    id: "a4",
-    question: "Market entry strategy for SE Asian renewable energy?",
-    confidence: 81,
-    date: "2024-01-15",
-    status: "complete" as const,
-  },
-];
-
-const TOP_SIGNALS: SignalCardData[] = [
-  {
-    id: "sig1",
-    name: "Precision Fermentation",
-    category: "Biotechnology",
-    strength: 87,
-    trend: "up",
-    horizon: "near",
-    description: "Rapid advancement in microbial strain engineering for cost-competitive production.",
-    readinessLevel: 6,
-  },
-  {
-    id: "sig2",
-    name: "Synthetic Biology Platforms",
-    category: "Biotechnology",
-    strength: 72,
-    trend: "up",
-    horizon: "mid",
-    description: "Programmable biology platforms reducing R&D timelines.",
-    readinessLevel: 5,
-  },
-  {
-    id: "sig3",
-    name: "Quantum Computing Advantage",
-    category: "Computing",
-    strength: 34,
-    trend: "up",
-    horizon: "far",
-    description: "Approaching practical quantum advantage in molecular simulation.",
-    readinessLevel: 3,
-  },
-];
-
-function getRecommendationLabel(confidence: number): {
+function getRecommendationLabel(confidence: number | null): {
   label: string;
-  variant: "emerald" | "amber" | "rose";
+  variant: "emerald" | "amber" | "rose" | "default";
 } {
-  if (confidence >= 70) return { label: "Proceed", variant: "emerald" };
-  if (confidence >= 50) return { label: "Caution", variant: "amber" };
+  if (confidence === null) return { label: "Pending", variant: "default" };
+  // Normalize: if <= 1, treat as fraction
+  const score = confidence <= 1 ? confidence * 100 : confidence;
+  if (score >= 70) return { label: "Proceed", variant: "emerald" };
+  if (score >= 50) return { label: "Caution", variant: "amber" };
   return { label: "Avoid", variant: "rose" };
+}
+
+function normalizeScore(score: number | null): number {
+  if (score === null) return 0;
+  return score <= 1 ? Math.round(score * 100) : Math.round(score);
+}
+
+interface DashboardStats {
+  totalAnalyses: number;
+  totalDocuments: number;
+  totalEntities: number;
 }
 
 export default function DashboardPage() {
   const [quickQuery, setQuickQuery] = useState("");
+  const [stats, setStats] = useState<DashboardStats>({
+    totalAnalyses: 0,
+    totalDocuments: 0,
+    totalEntities: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Fetch dashboard stats from multiple endpoints
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setLoadError(null);
+
+      // Fire all requests in parallel; any that fail return defaults
+      const [docsResult, entitiesResult] = await Promise.allSettled([
+        apiClient.listDocuments({ limit: 1 }),
+        apiClient.listEntities({ limit: 1 }),
+      ]);
+
+      const docCount =
+        docsResult.status === "fulfilled" ? docsResult.value.total : 0;
+      const entityCount =
+        entitiesResult.status === "fulfilled"
+          ? entitiesResult.value.total
+          : 0;
+
+      setStats({
+        totalAnalyses: 0, // Backend doesn't have a list analyses endpoint count
+        totalDocuments: docCount,
+        totalEntities: entityCount,
+      });
+    } catch (err) {
+      setLoadError(
+        err instanceof Error ? err.message : "Failed to load dashboard"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  // Load saved analyses from localStorage (history)
+  const [recentAnalyses, setRecentAnalyses] = useState<
+    Array<{
+      id: string;
+      question: string;
+      confidence: number | null;
+      date: string;
+    }>
+  >([]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("iic-analyses");
+      if (stored) {
+        const parsed = JSON.parse(stored) as Array<{
+          id: string;
+          question: string;
+          timestamp: string;
+          confidence: number | null;
+        }>;
+        setRecentAnalyses(
+          parsed.slice(0, 5).map((a) => ({
+            id: a.id,
+            question: a.question,
+            confidence: a.confidence,
+            date: new Date(a.timestamp).toLocaleDateString(),
+          }))
+        );
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   return (
     <DashboardLayout>
@@ -163,40 +137,65 @@ export default function DashboardPage() {
           </p>
         </div>
 
+        {/* Error state */}
+        {loadError && (
+          <Card className="border-accent-rose/30">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-accent-rose shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">
+                    Failed to load dashboard data
+                  </p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {loadError}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={fetchDashboardData}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stats cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatsCard
-            label="Total Analyses"
-            value={24}
-            trend="up"
-            trendValue="+12%"
-            period="vs. last month"
-            icon={<Brain className="h-5 w-5" />}
-          />
-          <StatsCard
-            label="Documents Ingested"
-            value={142}
-            trend="up"
-            trendValue="+8"
-            period="this week"
-            icon={<FileText className="h-5 w-5" />}
-          />
-          <StatsCard
-            label="Entities in Graph"
-            value={1247}
-            trend="up"
-            trendValue="+63"
-            period="this month"
-            icon={<Network className="h-5 w-5" />}
-          />
-          <StatsCard
-            label="Avg Confidence"
-            value="71%"
-            trend="neutral"
-            trendValue="0%"
-            period="vs. last month"
-            icon={<TrendingUp className="h-5 w-5" />}
-          />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {loading ? (
+            <>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="p-6">
+                    <div className="skeleton h-4 w-24 mb-2" />
+                    <div className="skeleton h-8 w-16" />
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          ) : (
+            <>
+              <StatsCard
+                label="Documents Ingested"
+                value={stats.totalDocuments}
+                icon={<FileText className="h-5 w-5" />}
+              />
+              <StatsCard
+                label="Entities in Graph"
+                value={stats.totalEntities}
+                icon={<Network className="h-5 w-5" />}
+              />
+              <StatsCard
+                label="Recent Analyses"
+                value={recentAnalyses.length}
+                icon={<Brain className="h-5 w-5" />}
+              />
+            </>
+          )}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-5">
@@ -222,7 +221,13 @@ export default function DashboardPage() {
                       className="w-full rounded-md border border-border-default bg-bg-tertiary py-2.5 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-blue"
                     />
                   </div>
-                  <Link href={quickQuery ? `/analyze?q=${encodeURIComponent(quickQuery)}` : "/analyze"}>
+                  <Link
+                    href={
+                      quickQuery
+                        ? `/analyze?q=${encodeURIComponent(quickQuery)}`
+                        : "/analyze"
+                    }
+                  >
                     <Button disabled={!quickQuery.trim()}>
                       <Send className="h-4 w-4" />
                       Analyze
@@ -245,66 +250,121 @@ export default function DashboardPage() {
                   </Link>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {RECENT_ANALYSES.map((analysis) => {
-                  const badge = getRecommendationLabel(analysis.confidence);
-                  return (
-                    <Link
-                      key={analysis.id}
-                      href="/reports"
-                      className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-bg-hover group"
-                    >
-                      <ConfidenceGauge
-                        score={analysis.confidence}
-                        size={40}
-                        strokeWidth={3}
-                        className="shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-text-primary truncate">
-                          {analysis.question}
-                        </p>
-                        <div className="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
-                          <Badge variant={badge.variant}>{badge.label}</Badge>
-                          <span>{analysis.date}</span>
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+              <CardContent>
+                {recentAnalyses.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Brain className="mx-auto h-8 w-8 text-text-muted/50" />
+                    <p className="mt-2 text-sm text-text-muted">
+                      No analyses yet. Start by asking a strategic question.
+                    </p>
+                    <Link href="/analyze">
+                      <Button variant="outline" size="sm" className="mt-3">
+                        <Sparkles className="h-4 w-4" />
+                        Run Analysis
+                      </Button>
                     </Link>
-                  );
-                })}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {recentAnalyses.map((analysis) => {
+                      const badge = getRecommendationLabel(
+                        analysis.confidence
+                      );
+                      return (
+                        <Link
+                          key={analysis.id}
+                          href="/analyze"
+                          className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-bg-hover group"
+                        >
+                          <ConfidenceGauge
+                            score={normalizeScore(analysis.confidence)}
+                            size={40}
+                            strokeWidth={3}
+                            className="shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-text-primary truncate">
+                              {analysis.question}
+                            </p>
+                            <div className="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
+                              <Badge variant={badge.variant}>
+                                {badge.label}
+                              </Badge>
+                              <span>{analysis.date}</span>
+                            </div>
+                          </div>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
-
-            {/* Technology Signals Preview */}
-            <div>
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-base font-semibold text-text-primary">
-                  Trending Signals
-                </h2>
-                <Link
-                  href="/knowledge"
-                  className="text-xs text-accent-blue hover:text-accent-blue-hover transition-colors"
-                >
-                  View all
-                </Link>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {TOP_SIGNALS.map((signal) => (
-                  <SignalCard key={signal.id} signal={signal} />
-                ))}
-              </div>
-            </div>
           </div>
 
-          {/* Right column: Activity Feed */}
+          {/* Right column: Getting Started / Info */}
           <div className="lg:col-span-2">
             <Card className="h-fit">
               <CardHeader>
-                <CardTitle className="text-base">Recent Activity</CardTitle>
+                <CardTitle className="text-base">Getting Started</CardTitle>
               </CardHeader>
               <CardContent>
-                <ActivityFeed items={MOCK_ACTIVITY} maxItems={8} />
+                <div className="space-y-4">
+                  <Link
+                    href="/documents"
+                    className="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-bg-hover group"
+                  >
+                    <div className="rounded-lg bg-accent-blue/10 p-2">
+                      <FileText className="h-4 w-4 text-accent-blue" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-text-primary">
+                        Upload Documents
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        Ingest PDFs, reports, and patents
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-text-muted opacity-0 group-hover:opacity-100" />
+                  </Link>
+
+                  <Link
+                    href="/analyze"
+                    className="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-bg-hover group"
+                  >
+                    <div className="rounded-lg bg-accent-violet/10 p-2">
+                      <Brain className="h-4 w-4 text-accent-violet" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-text-primary">
+                        Run Analysis
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        Ask strategic questions with multi-agent AI
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-text-muted opacity-0 group-hover:opacity-100" />
+                  </Link>
+
+                  <Link
+                    href="/knowledge"
+                    className="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-bg-hover group"
+                  >
+                    <div className="rounded-lg bg-accent-emerald/10 p-2">
+                      <Network className="h-4 w-4 text-accent-emerald" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-text-primary">
+                        Explore Knowledge Graph
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        Visualize entity connections
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-text-muted opacity-0 group-hover:opacity-100" />
+                  </Link>
+                </div>
               </CardContent>
             </Card>
           </div>
