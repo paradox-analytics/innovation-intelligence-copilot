@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from uuid import uuid4
 from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
@@ -87,11 +88,60 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
             entities, relationships = await extract_entities(
                 content[:8000], document_id=document_id
             )
-            graph_service = KnowledgeGraphService(neo4j_client)
-            for entity in entities:
-                await graph_service.upsert_entity(entity)
-            for rel in relationships:
-                await graph_service.upsert_relationship(rel)
+
+            # Map extracted entity types to the DB enum
+            valid_types = {"TECHNOLOGY", "COMPANY", "STARTUP", "MARKET", "PATENT", "RESEARCH_TOPIC"}
+            type_map: dict[str, str] = {
+                "technology": "TECHNOLOGY", "company": "COMPANY", "startup": "STARTUP",
+                "market": "MARKET", "patent": "PATENT", "research_topic": "RESEARCH_TOPIC",
+                "research_org": "COMPANY", "person": "COMPANY", "standard": "TECHNOLOGY",
+                "regulation": "TECHNOLOGY", "product": "TECHNOLOGY",
+            }
+
+            async with async_session_factory() as db2:
+                from sqlalchemy import text as sql_text
+                for entity in entities:
+                    etype = type_map.get(entity.entity_type.lower(), "TECHNOLOGY")
+                    await db2.execute(
+                        sql_text(
+                            "INSERT INTO entities (id, name, entity_type, properties) "
+                            "VALUES (:id, :name, cast(:etype as entity_type_enum), cast(:props as jsonb)) "
+                            "ON CONFLICT (id) DO NOTHING"
+                        ),
+                        {
+                            "id": entity.id,
+                            "name": entity.name,
+                            "etype": etype,
+                            "props": json.dumps(entity.properties),
+                        },
+                    )
+                for rel in relationships:
+                    await db2.execute(
+                        sql_text(
+                            "INSERT INTO relationships (id, source_entity_id, target_entity_id, relationship_type, properties) "
+                            "VALUES (:id, :src, :tgt, :rtype, cast(:props as jsonb)) "
+                            "ON CONFLICT (id) DO NOTHING"
+                        ),
+                        {
+                            "id": uuid4().hex,
+                            "src": rel.source_id,
+                            "tgt": rel.target_id,
+                            "rtype": rel.relationship_type,
+                            "props": json.dumps(rel.properties),
+                        },
+                    )
+                await db2.commit()
+
+            # Also store in Neo4j
+            try:
+                graph_service = KnowledgeGraphService(neo4j_client)
+                for entity in entities:
+                    await graph_service.upsert_entity(entity)
+                for rel in relationships:
+                    await graph_service.upsert_relationship(rel)
+            except Exception:
+                logger.warning("Neo4j storage failed (non-fatal), entities stored in Postgres")
+
             logger.info(
                 "ingestion_entities document_id=%s entities=%d relationships=%d",
                 document_id, len(entities), len(relationships),
