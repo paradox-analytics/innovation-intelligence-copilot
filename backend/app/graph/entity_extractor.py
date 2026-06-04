@@ -11,7 +11,7 @@ from app.models import GraphEntity, GraphRelationship
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 SYSTEM_PROMPT = """\
 You are an entity extraction system for a technology knowledge graph. \

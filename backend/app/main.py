@@ -35,6 +35,61 @@ logger = logging.getLogger(__name__)
 _worker_task: asyncio.Task[None] | None = None
 
 
+async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]:
+    """Run the multi-agent analysis pipeline and persist results."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from app.agents.orchestrator import run_analysis
+    from app.core.database import async_session_factory
+    from app.models.analysis import AnalysisRequest, AnalysisStatus
+
+    analysis_id = str(payload["analysis_id"])
+    query = str(payload["query"])
+
+    logger.info("analysis_started analysis_id=%s query=%s", analysis_id, query[:80])
+
+    async with async_session_factory() as db:
+        # Mark as processing
+        result = await db.execute(
+            select(AnalysisRequest).where(AnalysisRequest.id == analysis_id)
+        )
+        analysis = result.scalar_one_or_none()
+        if analysis is None:
+            logger.error("analysis_not_found analysis_id=%s", analysis_id)
+            return {"error": "Analysis not found"}
+
+        analysis.status = AnalysisStatus.PROCESSING
+        await db.commit()
+
+        try:
+            analysis_result = await run_analysis(query=query)
+
+            # Persist results
+            analysis.status = AnalysisStatus.COMPLETED
+            analysis.confidence_score = analysis_result.confidence_score
+            from dataclasses import asdict
+            analysis.result = asdict(analysis_result)
+            analysis.completed_at = datetime.now(timezone.utc)
+            await db.commit()
+
+            logger.info(
+                "analysis_completed analysis_id=%s confidence=%.1f",
+                analysis_id,
+                analysis_result.confidence_score,
+            )
+            return {"status": "completed", "analysis_id": analysis_id}
+
+        except Exception as exc:
+            analysis.status = AnalysisStatus.FAILED
+            analysis.result = {"error": str(exc)}
+            analysis.completed_at = datetime.now(timezone.utc)
+            await db.commit()
+            logger.exception("analysis_failed analysis_id=%s", analysis_id)
+            raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage startup and shutdown of database connections and workers."""
@@ -55,8 +110,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.warning("Neo4j connection failed (non-fatal): %s", exc)
 
-    # Start background task worker
+    # Register analysis handler and start background task worker
     task_queue = get_task_queue()
+    task_queue.register("analysis", _handle_analysis_task)
     _worker_task = asyncio.create_task(task_queue.start_worker())
     logger.info("Background task worker started.")
 

@@ -15,7 +15,7 @@ from app.rag.retriever import RetrievedChunk, hybrid_search, semantic_search
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
 # ---------------------------------------------------------------------------

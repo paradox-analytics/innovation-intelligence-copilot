@@ -13,7 +13,7 @@ from app.rag.retriever import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 _DEFAULT_THRESHOLD = 3
 _BATCH_SIZE = 10
 

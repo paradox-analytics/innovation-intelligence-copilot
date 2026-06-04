@@ -13,7 +13,7 @@ from app.models import AgentInput, AgentOutput, AgentTrace
 logger = logging.getLogger(__name__)
 
 # Defaults not already in the global Settings
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 _DEFAULT_TIMEOUT_SECONDS = 120
 
 

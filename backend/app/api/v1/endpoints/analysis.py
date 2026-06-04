@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.tasks import enqueue_analysis
 from app.models.analysis import AnalysisRequest, AnalysisStatus
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
@@ -68,7 +69,13 @@ async def submit_analysis(
         created_at=datetime.now(timezone.utc),
     )
     db.add(analysis)
-    await db.flush()
+    await db.commit()
+
+    await enqueue_analysis(
+        analysis_id=analysis.id,
+        query=body.query,
+        context=body.context or {},
+    )
 
     return {
         "data": AnalysisSubmitResponse(

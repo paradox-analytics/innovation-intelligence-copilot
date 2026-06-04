@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     # LLM Models
     DEFAULT_LLM_PROVIDER: str = "anthropic"
-    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
     OPENAI_MODEL: str = "gpt-4o"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
 
