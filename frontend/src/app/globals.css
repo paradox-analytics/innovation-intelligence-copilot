@@ -99,3 +99,82 @@ body {
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: var(--radius-md);
 }
+
+/* Print styles — only show the report content */
+@media print {
+  /* Hide all app chrome */
+  body {
+    background: white !important;
+    color: #111 !important;
+  }
+
+  /* Hide sidebar, header, nav, pipeline, tabs bar, action buttons */
+  [data-print-hide],
+  nav,
+  header,
+  aside {
+    display: none !important;
+  }
+
+  /* The report container should fill the page */
+  [data-print-report] {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+  }
+
+  /* Override dark theme colors for print */
+  [data-print-report],
+  [data-print-report] * {
+    color: #111 !important;
+    background-color: transparent !important;
+    border-color: #ddd !important;
+  }
+
+  [data-print-report] h1,
+  [data-print-report] h2 {
+    color: #111 !important;
+  }
+
+  /* Keep badge colors visible in print */
+  [data-print-report] [class*="bg-red"],
+  [data-print-report] [class*="bg-amber"],
+  [data-print-report] [class*="bg-emerald"],
+  [data-print-report] [class*="bg-yellow"] {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Metric cards need light bg */
+  [data-print-report] .rounded-lg {
+    background-color: #f5f5f5 !important;
+  }
+
+  /* Blue accent for headings */
+  [data-print-report] .text-accent-blue {
+    color: #2563eb !important;
+  }
+
+  /* Confidence badge */
+  [data-print-report] .text-2xl {
+    color: #2563eb !important;
+  }
+
+  /* Hide scrollbar area */
+  * {
+    overflow: visible !important;
+  }
+
+  /* Page margins */
+  @page {
+    margin: 0.75in;
+    size: letter portrait;
+  }
+}

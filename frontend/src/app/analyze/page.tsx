@@ -435,7 +435,7 @@ function AnalyzePageContent() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl space-y-8 p-6">
             {/* Page header */}
-            <div className="flex items-start justify-between">
+            <div data-print-hide className="flex items-start justify-between">
               <div>
                 <h1 className="text-2xl font-bold text-text-primary">
                   Strategic Analysis
@@ -457,7 +457,7 @@ function AnalyzePageContent() {
             </div>
 
             {/* Input area */}
-            <Card>
+            <Card data-print-hide>
               <CardContent className="p-6">
                 <div className="space-y-4">
                   <label
@@ -515,7 +515,7 @@ function AnalyzePageContent() {
 
             {/* Agent Pipeline Visualization */}
             {!isIdle && (
-              <Card className="animate-fade-in overflow-hidden">
+              <Card data-print-hide className="animate-fade-in overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Sparkles className="h-5 w-5 text-accent-blue" />
@@ -661,7 +661,7 @@ function AnalyzePageContent() {
             {isComplete && (
               <div className="space-y-6 animate-fade-in">
                 <Tabs defaultValue="overview">
-                  <TabsList className="w-fit">
+                  <TabsList data-print-hide className="w-fit">
                     <TabsTrigger value="overview">Overview</TabsTrigger>
                     {(supportingEvidence.length > 0 || contrarianEvidence.length > 0) && (
                       <TabsTrigger value="evidence">Evidence</TabsTrigger>
@@ -676,7 +676,7 @@ function AnalyzePageContent() {
                   </TabsList>
 
                   {/* Overview Tab */}
-                  <TabsContent value="overview" className="mt-6 space-y-6">
+                  <TabsContent data-print-hide value="overview" className="mt-6 space-y-6">
                     {/* Recommendation + Confidence */}
                     <Card>
                       <CardHeader>
@@ -842,7 +842,7 @@ function AnalyzePageContent() {
 
                   {/* Evidence Tab */}
                   {(supportingEvidence.length > 0 || contrarianEvidence.length > 0) && (
-                    <TabsContent value="evidence" className="mt-6">
+                    <TabsContent data-print-hide value="evidence" className="mt-6">
                       <div className="grid gap-6 lg:grid-cols-2">
                         {supportingEvidence.length > 0 && (
                           <Card>
@@ -870,7 +870,7 @@ function AnalyzePageContent() {
 
                   {/* Risks Tab */}
                   {(risks.length > 0 || riskItems.length > 0) && (
-                    <TabsContent value="risks" className="mt-6 space-y-6">
+                    <TabsContent data-print-hide value="risks" className="mt-6 space-y-6">
                       {riskItems.length > 0 && (
                         <Card>
                           <CardHeader>
@@ -931,7 +931,7 @@ function AnalyzePageContent() {
 
                   {/* Signals Tab */}
                   {signals.length > 0 && (
-                    <TabsContent value="signals" className="mt-6">
+                    <TabsContent data-print-hide value="signals" className="mt-6">
                       <div className="grid gap-4 sm:grid-cols-2">
                         {signals.map((signal) => (
                           <SignalCard key={signal.id} signal={signal} />
@@ -944,7 +944,7 @@ function AnalyzePageContent() {
                   <TabsContent value="report" className="mt-6">
                     <div className="mx-auto max-w-4xl">
                       {/* Report Actions Bar */}
-                      <div className="mb-4 flex items-center justify-end gap-2">
+                      <div data-print-hide className="mb-4 flex items-center justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={handleCopyReport}>
                           <ClipboardCopy className="h-4 w-4" />
                           {copied ? "Copied!" : "Copy Report"}
@@ -956,7 +956,7 @@ function AnalyzePageContent() {
                       </div>
 
                       {/* Formatted Report */}
-                      <div className="rounded-xl border border-border-primary bg-bg-secondary shadow-lg print:shadow-none print:border-none">
+                      <div data-print-report className="rounded-xl border border-border-primary bg-bg-secondary shadow-lg">
                         {/* Report Header */}
                         <div className="border-b border-border-primary px-8 py-6">
                           <div className="flex items-start justify-between">
