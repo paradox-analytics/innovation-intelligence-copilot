@@ -185,15 +185,8 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
         await db.commit()
 
         try:
-            # Try the full LangGraph orchestrator first
-            try:
-                analysis_result = await run_analysis(query=query)
-                from dataclasses import asdict
-                result_dict = asdict(analysis_result)
-                confidence = analysis_result.confidence_score
-            except Exception as orch_err:
-                logger.warning("Orchestrator failed, using direct analysis: %s", orch_err)
-                result_dict, confidence = await _direct_analysis(query)
+            # Use direct Claude analysis (single call, reliable in production)
+            result_dict, confidence = await _direct_analysis(query)
 
             analysis.status = AnalysisStatus.COMPLETED
             analysis.confidence_score = confidence
