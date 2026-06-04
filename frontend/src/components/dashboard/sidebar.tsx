@@ -11,9 +11,11 @@ import {
   Search,
   Settings,
   Sparkles,
+  User,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useState } from "react";
 
 interface NavItem {
@@ -52,6 +54,7 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -105,6 +108,34 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t border-border-default p-3">
+        {/* User avatar */}
+        {session?.user && (
+          <div
+            className={cn(
+              "mb-2 flex items-center gap-3 rounded-lg px-3 py-2",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            {session.user.image ? (
+              <img
+                src={session.user.image}
+                alt={session.user.name ?? "User avatar"}
+                className="h-7 w-7 shrink-0 rounded-full"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-blue/20">
+                <User className="h-4 w-4 text-accent-blue" />
+              </div>
+            )}
+            {!collapsed && (
+              <span className="truncate text-sm font-medium text-text-secondary">
+                {session.user.name ?? session.user.email}
+              </span>
+            )}
+          </div>
+        )}
+
         <Link
           href="/settings"
           className={cn(

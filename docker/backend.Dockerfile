@@ -46,17 +46,13 @@ COPY backend/ ./backend/
 # Install the project itself
 RUN poetry install --only main
 
-# ---------------------------------------------------------------------------
-# Runtime
-# ---------------------------------------------------------------------------
-EXPOSE 8000
+# Set PYTHONPATH so the app module is importable
+ENV PYTHONPATH="/app:$PYTHONPATH"
 
+# ---------------------------------------------------------------------------
+# Runtime — PORT is provided by Railway at deploy time
+# ---------------------------------------------------------------------------
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
-CMD ["poetry", "run", "uvicorn", "backend.app.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "4", \
-     "--loop", "uvloop", \
-     "--http", "httptools"]
+CMD ["sh", "-c", "poetry run uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 4 --loop uvloop --http httptools"]
