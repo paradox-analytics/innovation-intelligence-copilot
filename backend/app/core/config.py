@@ -11,9 +11,11 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
     SECRET_KEY: str = "change-me-in-production"
+    ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = "INFO"
 
-    # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # CORS — plain comma-separated string, parsed in main.py
+    CORS_ORIGINS: str = "*"
 
     # PostgreSQL + pgvector
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/innovation_intel"
@@ -30,10 +32,24 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # LLM Models
+    DEFAULT_LLM_PROVIDER: str = "anthropic"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
+    OPENAI_MODEL: str = "gpt-4o"
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+
+    # Sync DB URL (for alembic)
+    DATABASE_URL_SYNC: str = ""
+
+    # Frontend
+    FRONTEND_URL: str = "http://localhost:3000"
+    NEXT_PUBLIC_API_URL: str = "http://localhost:8000/api/v1"
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": True,
+        "extra": "ignore",
     }
 
 

@@ -1,66 +1,193 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
+const TOKEN_KEY = "iic_token";
+
+// ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function setToken(token: string): void {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+}
+
+function clearToken(): void {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared response types
+// ---------------------------------------------------------------------------
 
 interface ApiResponse<T> {
   data: T;
-  error?: string;
 }
 
 interface ApiListResponse<T> {
   data: T[];
   total: number;
-  error?: string;
 }
 
-interface AnalysisRequest {
-  question: string;
-  depth?: "quick" | "standard" | "deep";
-  focus_areas?: string[];
+// ---------------------------------------------------------------------------
+// Auth types
+// ---------------------------------------------------------------------------
+
+interface LoginRequest {
+  email: string;
+  password: string;
 }
 
-interface AgentStatus {
-  agent: string;
-  status: "pending" | "running" | "complete" | "error";
-  message?: string;
+interface RegisterRequest {
+  email: string;
+  password: string;
+  full_name: string;
 }
 
-interface AnalysisResult {
+interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
+
+interface UserResponse {
   id: string;
-  question: string;
-  recommendation: string;
-  confidence_score: number;
-  executive_summary: string;
-  supporting_evidence: EvidenceItemResponse[];
-  contrarian_evidence: EvidenceItemResponse[];
-  strategic_risks: string[];
-  key_assumptions: string[];
-  agent_statuses: AgentStatus[];
+  email: string;
+  full_name: string;
+  role: string;
+  is_active: boolean;
   created_at: string;
+  updated_at: string;
 }
 
-interface EvidenceItemResponse {
-  id: string;
-  claim: string;
-  source: string;
-  source_url?: string;
-  relevance: "high" | "medium" | "low";
+interface APIKeyResponse {
+  api_key: string;
 }
+
+// ---------------------------------------------------------------------------
+// Analysis types
+// ---------------------------------------------------------------------------
+
+interface AnalysisSubmitRequest {
+  query: string;
+  context?: Record<string, unknown>;
+}
+
+interface AnalysisSubmitResponse {
+  analysis_id: string;
+  status: string;
+}
+
+interface AnalysisResultResponse {
+  id: string;
+  query: string;
+  status: string;
+  result: Record<string, unknown> | null;
+  confidence_score: number | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+interface AnalysisStatusResponse {
+  id: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Document types
+// ---------------------------------------------------------------------------
 
 interface DocumentResponse {
   id: string;
   title: string;
-  type: string;
-  status: "processing" | "indexed" | "error";
+  source_url: string | null;
+  doc_type: string;
+  metadata: Record<string, unknown> | null;
   created_at: string;
-  page_count?: number;
+  updated_at: string;
 }
 
-interface KnowledgeEntity {
+// ---------------------------------------------------------------------------
+// Knowledge types
+// ---------------------------------------------------------------------------
+
+interface EntityResponse {
   id: string;
   name: string;
-  type: "technology" | "company" | "startup" | "market" | "patent";
-  description: string;
-  connections: number;
+  entity_type: string;
+  properties: Record<string, unknown> | null;
+  neo4j_id: string | null;
 }
+
+interface RelationshipResponse {
+  id: string;
+  source_entity_id: string;
+  target_entity_id: string;
+  relationship_type: string;
+  properties: Record<string, unknown> | null;
+}
+
+interface EntityWithRelationshipsResponse {
+  entity: EntityResponse;
+  relationships: RelationshipResponse[];
+}
+
+interface SubgraphResponse {
+  entities: EntityResponse[];
+  relationships: RelationshipResponse[];
+}
+
+// ---------------------------------------------------------------------------
+// Report types
+// ---------------------------------------------------------------------------
+
+interface ReportMetadata {
+  id: string;
+  analysis_id: string;
+  format: string;
+  generated_at: string;
+}
+
+interface ReportResponse {
+  metadata: ReportMetadata;
+  title: string;
+  executive_summary: string;
+  sections: Array<Record<string, unknown>>;
+  confidence_score: number | null;
+}
+
+interface ReportGenerateRequest {
+  analysis_id: string;
+  format?: string;
+  include_appendix?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// SSE event types
+// ---------------------------------------------------------------------------
+
+interface SSEEvent {
+  event: string;
+  timestamp: string;
+  agent?: string;
+  status?: string;
+  partial_result?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// API Client
+// ---------------------------------------------------------------------------
 
 class ApiClient {
   private baseUrl: string;
@@ -74,12 +201,23 @@ class ApiClient {
     options?: RequestInit
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
+    const token = getToken();
+    const headers: Record<string, string> = {
+      ...(options?.headers as Record<string, string>),
+    };
+
+    // Only set Content-Type for non-FormData requests
+    if (!(options?.body instanceof FormData)) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
       ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {
@@ -87,78 +225,293 @@ class ApiClient {
       throw new Error(
         `API error ${response.status}: ${errorBody || response.statusText}`
       );
+    }
+
+    // 204 No Content
+    if (response.status === 204) {
+      return undefined as T;
     }
 
     return response.json() as Promise<T>;
   }
 
-  // Analysis endpoints
+  // -------------------------------------------------------------------------
+  // Auth
+  // -------------------------------------------------------------------------
+
+  async login(body: LoginRequest): Promise<TokenResponse> {
+    const response = await this.request<ApiResponse<TokenResponse>>(
+      "/auth/login",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    setToken(response.data.access_token);
+    return response.data;
+  }
+
+  async register(body: RegisterRequest): Promise<UserResponse> {
+    const response = await this.request<ApiResponse<UserResponse>>(
+      "/auth/register",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    return response.data;
+  }
+
+  async getMe(): Promise<UserResponse> {
+    const response = await this.request<ApiResponse<UserResponse>>("/auth/me");
+    return response.data;
+  }
+
+  async generateApiKey(): Promise<APIKeyResponse> {
+    const response = await this.request<ApiResponse<APIKeyResponse>>(
+      "/auth/api-key",
+      { method: "POST" }
+    );
+    return response.data;
+  }
+
+  logout(): void {
+    clearToken();
+  }
+
+  isAuthenticated(): boolean {
+    return getToken() !== null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Analysis
+  // -------------------------------------------------------------------------
+
   async submitAnalysis(
-    request: AnalysisRequest
-  ): Promise<ApiResponse<AnalysisResult>> {
-    return this.request("/api/v1/analyze", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
+    body: AnalysisSubmitRequest
+  ): Promise<AnalysisSubmitResponse> {
+    const response = await this.request<ApiResponse<AnalysisSubmitResponse>>(
+      "/analyze",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    return response.data;
   }
 
-  async getAnalysis(id: string): Promise<ApiResponse<AnalysisResult>> {
-    return this.request(`/api/v1/analyze/${id}`);
+  async getAnalysis(id: string): Promise<AnalysisResultResponse> {
+    const response = await this.request<ApiResponse<AnalysisResultResponse>>(
+      `/analyze/${id}`
+    );
+    return response.data;
   }
 
-  async listAnalyses(): Promise<ApiListResponse<AnalysisResult>> {
-    return this.request("/api/v1/analyze");
+  async getAnalysisStatus(id: string): Promise<AnalysisStatusResponse> {
+    const response = await this.request<ApiResponse<AnalysisStatusResponse>>(
+      `/analyze/${id}/status`
+    );
+    return response.data;
   }
 
-  // Document endpoints
-  async uploadDocument(formData: FormData): Promise<ApiResponse<DocumentResponse>> {
-    const url = `${this.baseUrl}/api/v1/documents`;
-    const response = await fetch(url, {
-      method: "POST",
-      body: formData,
-    });
+  /**
+   * Subscribe to SSE stream for real-time analysis progress.
+   * Returns an AbortController to allow cancelling the stream.
+   */
+  streamAnalysis(
+    id: string,
+    onEvent: (event: SSEEvent) => void,
+    onDone: () => void,
+    onError: (error: Error) => void
+  ): AbortController {
+    const controller = new AbortController();
+    const url = `${this.baseUrl}/analyze/${id}/stream`;
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(
-        `API error ${response.status}: ${errorBody || response.statusText}`
-      );
-    }
+    const connect = async () => {
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            Accept: "text/event-stream",
+          },
+        });
+        if (!response.ok) {
+          throw new Error(`SSE error: ${response.status}`);
+        }
 
-    return response.json() as Promise<ApiResponse<DocumentResponse>>;
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("No response body for SSE stream");
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          let currentEventType = "message";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              currentEventType = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              const data = line.slice(6);
+              if (currentEventType === "done") {
+                onDone();
+                return;
+              }
+              try {
+                const parsed = JSON.parse(data) as SSEEvent;
+                onEvent(parsed);
+              } catch {
+                // ignore non-JSON data lines
+              }
+            }
+          }
+        }
+        onDone();
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        onError(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+
+    connect();
+    return controller;
   }
 
-  async listDocuments(): Promise<ApiListResponse<DocumentResponse>> {
-    return this.request("/api/v1/documents");
-  }
+  // -------------------------------------------------------------------------
+  // Documents
+  // -------------------------------------------------------------------------
 
-  async deleteDocument(id: string): Promise<void> {
-    await this.request(`/api/v1/documents/${id}`, {
-      method: "DELETE",
-    });
-  }
-
-  // Knowledge Graph endpoints
-  async searchEntities(query: string): Promise<ApiListResponse<KnowledgeEntity>> {
-    return this.request(
-      `/api/v1/knowledge/entities?q=${encodeURIComponent(query)}`
+  async listDocuments(
+    params?: { offset?: number; limit?: number; doc_type?: string }
+  ): Promise<ApiListResponse<DocumentResponse>> {
+    const searchParams = new URLSearchParams();
+    if (params?.offset !== undefined)
+      searchParams.set("offset", String(params.offset));
+    if (params?.limit !== undefined)
+      searchParams.set("limit", String(params.limit));
+    if (params?.doc_type) searchParams.set("doc_type", params.doc_type);
+    const qs = searchParams.toString();
+    return this.request<ApiListResponse<DocumentResponse>>(
+      `/documents${qs ? `?${qs}` : ""}`
     );
   }
 
-  async getEntity(id: string): Promise<ApiResponse<KnowledgeEntity>> {
-    return this.request(`/api/v1/knowledge/entities/${id}`);
+  async uploadDocument(
+    file: File,
+    title: string,
+    docType?: string,
+    sourceUrl?: string
+  ): Promise<DocumentResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const params = new URLSearchParams();
+    params.set("title", title);
+    if (docType) params.set("doc_type", docType);
+    if (sourceUrl) params.set("source_url", sourceUrl);
+
+    const response = await this.request<ApiResponse<DocumentResponse>>(
+      `/documents?${params.toString()}`,
+      { method: "POST", body: formData }
+    );
+    return response.data;
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+    await this.request<void>(`/documents/${id}`, { method: "DELETE" });
+  }
+
+  // -------------------------------------------------------------------------
+  // Knowledge Graph
+  // -------------------------------------------------------------------------
+
+  async listEntities(
+    params?: { q?: string; entity_type?: string; offset?: number; limit?: number }
+  ): Promise<ApiListResponse<EntityResponse>> {
+    const searchParams = new URLSearchParams();
+    if (params?.q) searchParams.set("q", params.q);
+    if (params?.entity_type) searchParams.set("entity_type", params.entity_type);
+    if (params?.offset !== undefined)
+      searchParams.set("offset", String(params.offset));
+    if (params?.limit !== undefined)
+      searchParams.set("limit", String(params.limit));
+    const qs = searchParams.toString();
+    return this.request<ApiListResponse<EntityResponse>>(
+      `/knowledge/entities${qs ? `?${qs}` : ""}`
+    );
+  }
+
+  async getEntityRelationships(
+    entityId: string
+  ): Promise<EntityWithRelationshipsResponse> {
+    const response = await this.request<
+      ApiResponse<EntityWithRelationshipsResponse>
+    >(`/knowledge/entities/${entityId}/relationships`);
+    return response.data;
+  }
+
+  async getSubgraph(
+    topic: string,
+    depth?: number
+  ): Promise<SubgraphResponse> {
+    const params = new URLSearchParams({ topic });
+    if (depth !== undefined) params.set("depth", String(depth));
+    const response = await this.request<ApiResponse<SubgraphResponse>>(
+      `/knowledge/graph?${params.toString()}`
+    );
+    return response.data;
+  }
+
+  // -------------------------------------------------------------------------
+  // Reports
+  // -------------------------------------------------------------------------
+
+  async generateReport(body: ReportGenerateRequest): Promise<ReportResponse> {
+    const response = await this.request<ApiResponse<ReportResponse>>(
+      "/reports/generate",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    return response.data;
+  }
+
+  async getReport(
+    reportId: string,
+    analysisId: string
+  ): Promise<ReportResponse> {
+    const response = await this.request<ApiResponse<ReportResponse>>(
+      `/reports/${reportId}?analysis_id=${encodeURIComponent(analysisId)}`
+    );
+    return response.data;
   }
 }
 
 export const apiClient = new ApiClient(BASE_URL);
 
+export {
+  getToken,
+  setToken,
+  clearToken,
+  TOKEN_KEY,
+};
+
 export type {
-  AnalysisRequest,
-  AnalysisResult,
-  AgentStatus,
-  EvidenceItemResponse,
+  LoginRequest,
+  RegisterRequest,
+  TokenResponse,
+  UserResponse,
+  APIKeyResponse,
+  AnalysisSubmitRequest,
+  AnalysisSubmitResponse,
+  AnalysisResultResponse,
+  AnalysisStatusResponse,
   DocumentResponse,
-  KnowledgeEntity,
+  EntityResponse,
+  RelationshipResponse,
+  EntityWithRelationshipsResponse,
+  SubgraphResponse,
+  ReportMetadata,
+  ReportResponse,
+  ReportGenerateRequest,
+  SSEEvent,
   ApiResponse,
   ApiListResponse,
 };

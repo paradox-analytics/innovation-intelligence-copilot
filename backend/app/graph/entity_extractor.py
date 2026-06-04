@@ -11,7 +11,7 @@ from app.models import GraphEntity, GraphRelationship
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 SYSTEM_PROMPT = """\
 You are an entity extraction system for a technology knowledge graph. \
@@ -51,13 +51,43 @@ async def extract_entities(
 
     response = await client.messages.create(
         model=_DEFAULT_MODEL,
-        max_tokens=4096,
+        max_tokens=8192,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": f"Extract entities from:\n\n{text[:8000]}"}],
+        messages=[{"role": "user", "content": f"Extract the most important entities (max 20) and relationships (max 15) from:\n\n{text[:4000]}"}],
     )
 
-    raw = response.content[0].text
-    parsed: dict[str, list[dict[str, object]]] = json.loads(raw)
+    raw = response.content[0].text.strip()
+    # Strip markdown fences if Claude wrapped the JSON
+    if raw.startswith("```"):
+        lines = raw.split("\n")
+        # Remove first line (```json or ```)
+        lines = lines[1:]
+        # Remove last line if it's ```
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        raw = "\n".join(lines).strip()
+
+    # Try to extract JSON even if there's surrounding text
+    if not raw.startswith("{"):
+        start = raw.find("{")
+        if start >= 0:
+            raw = raw[start:]
+        end = raw.rfind("}")
+        if end >= 0:
+            raw = raw[:end + 1]
+
+    try:
+        parsed: dict[str, list[dict[str, object]]] = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Entity extraction returned invalid JSON, attempting repair")
+        # Last resort: find the first { and last }
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            parsed = json.loads(raw[start:end + 1])
+        else:
+            logger.error("Could not parse entity extraction response: %s", raw[:200])
+            return [], []
 
     # Build name-to-id mapping so relationships can reference stable IDs
     name_to_id: dict[str, str] = {}

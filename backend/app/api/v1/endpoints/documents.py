@@ -75,7 +75,19 @@ async def upload_document(
         updated_at=now,
     )
     db.add(document)
-    await db.flush()
+    await db.commit()
+
+    # Trigger background ingestion (chunking + embedding + entity extraction)
+    from app.core.tasks import get_task_queue
+    queue = get_task_queue()
+    await queue.enqueue(
+        task_type="document_ingestion",
+        payload={
+            "document_id": document.id,
+            "title": title,
+            "content": content[:50000],
+        },
+    )
 
     return {
         "data": DocumentResponse(

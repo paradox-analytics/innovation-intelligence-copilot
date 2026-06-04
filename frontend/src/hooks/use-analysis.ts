@@ -2,30 +2,44 @@
 
 import {
   apiClient,
-  type AnalysisRequest,
-  type AnalysisResult,
+  type AnalysisSubmitRequest,
+  type AnalysisResultResponse,
+  type SSEEvent,
 } from "@/lib/api";
 import { useCallback, useRef, useState } from "react";
 
-type AnalysisStatus = "idle" | "submitting" | "polling" | "complete" | "error";
+type AnalysisStatus = "idle" | "submitting" | "streaming" | "polling" | "complete" | "error";
+
+interface AgentProgress {
+  agent: string;
+  status: "waiting" | "running" | "complete" | "error";
+  partialResult?: Record<string, unknown>;
+}
 
 interface UseAnalysisReturn {
-  result: AnalysisResult | null;
+  result: AnalysisResultResponse | null;
   status: AnalysisStatus;
   error: string | null;
-  submit: (request: AnalysisRequest) => Promise<void>;
+  agentProgress: AgentProgress[];
+  submit: (request: AnalysisSubmitRequest) => Promise<void>;
   reset: () => void;
 }
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 150; // 5 minutes max
 
+const AGENT_NAMES = ["research", "support", "skeptic", "risk", "trend", "executive"];
+
 export function useAnalysis(): UseAnalysisReturn {
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [result, setResult] = useState<AnalysisResultResponse | null>(null);
   const [status, setStatus] = useState<AnalysisStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [agentProgress, setAgentProgress] = useState<AgentProgress[]>(
+    AGENT_NAMES.map((name) => ({ agent: name, status: "waiting" }))
+  );
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollCountRef = useRef(0);
+  const sseControllerRef = useRef<AbortController | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -35,6 +49,27 @@ export function useAnalysis(): UseAnalysisReturn {
     pollCountRef.current = 0;
   }, []);
 
+  const stopStreaming = useCallback(() => {
+    if (sseControllerRef.current) {
+      sseControllerRef.current.abort();
+      sseControllerRef.current = null;
+    }
+  }, []);
+
+  const fetchFinalResult = useCallback(async (analysisId: string) => {
+    try {
+      const analysis = await apiClient.getAnalysis(analysisId);
+      setResult(analysis);
+      setStatus("complete");
+    } catch (err) {
+      setStatus("error");
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch final results"
+      );
+    }
+  }, []);
+
+  // Polling fallback when SSE is not available
   const pollForResult = useCallback(
     (analysisId: string) => {
       const poll = async () => {
@@ -48,19 +83,34 @@ export function useAnalysis(): UseAnalysisReturn {
             return;
           }
 
-          const response = await apiClient.getAnalysis(analysisId);
-          const analysis = response.data;
+          const statusResponse = await apiClient.getAnalysisStatus(analysisId);
+          const s = statusResponse.status.toUpperCase();
 
-          setResult(analysis);
+          // Simulate agent progress based on elapsed time
+          if (s === "PROCESSING") {
+            const elapsed = pollCountRef.current * POLL_INTERVAL_MS / 1000;
+            setAgentProgress((prev) =>
+              prev.map((ap, i) => {
+                if (i === 0 && elapsed >= 1) return { ...ap, status: "running" as const };
+                if (i === 0 && elapsed >= 8) return { ...ap, status: "complete" as const };
+                if (i >= 1 && i <= 4 && elapsed >= 10) return { ...ap, status: "running" as const };
+                if (i >= 1 && i <= 4 && elapsed >= 25) return { ...ap, status: "complete" as const };
+                if (i === 5 && elapsed >= 27) return { ...ap, status: "running" as const };
+                return ap;
+              })
+            );
+          }
 
-          const allComplete = analysis.agent_statuses.every(
-            (agent) =>
-              agent.status === "complete" || agent.status === "error"
-          );
-
-          if (allComplete) {
+          if (s === "COMPLETED") {
             stopPolling();
-            setStatus("complete");
+            setAgentProgress((prev) =>
+              prev.map((ap) => ({ ...ap, status: "complete" as const }))
+            );
+            await fetchFinalResult(analysisId);
+          } else if (s === "FAILED") {
+            stopPolling();
+            setStatus("error");
+            setError("Analysis failed. Please try again.");
           } else {
             pollTimerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
           }
@@ -68,7 +118,9 @@ export function useAnalysis(): UseAnalysisReturn {
           stopPolling();
           setStatus("error");
           setError(
-            err instanceof Error ? err.message : "Failed to fetch analysis results"
+            err instanceof Error
+              ? err.message
+              : "Failed to fetch analysis status"
           );
         }
       };
@@ -76,22 +128,82 @@ export function useAnalysis(): UseAnalysisReturn {
       setStatus("polling");
       poll();
     },
-    [stopPolling]
+    [stopPolling, fetchFinalResult]
+  );
+
+  // SSE streaming for real-time agent progress
+  const startStreaming = useCallback(
+    (analysisId: string) => {
+      setStatus("streaming");
+
+      const controller = apiClient.streamAnalysis(
+        analysisId,
+        // onEvent
+        (event: SSEEvent) => {
+          if (event.event === "agent_started" && event.agent) {
+            setAgentProgress((prev) =>
+              prev.map((ap) =>
+                ap.agent === event.agent ? { ...ap, status: "running" } : ap
+              )
+            );
+          } else if (event.event === "agent_completed" && event.agent) {
+            setAgentProgress((prev) =>
+              prev.map((ap) =>
+                ap.agent === event.agent
+                  ? {
+                      ...ap,
+                      status: "complete",
+                      partialResult: event.partial_result,
+                    }
+                  : ap
+              )
+            );
+          } else if (event.event === "analysis_complete") {
+            // All agents done, fetch the full result
+            setAgentProgress((prev) =>
+              prev.map((ap) => ({ ...ap, status: "complete" }))
+            );
+            fetchFinalResult(analysisId);
+          } else if (event.event === "analysis_error") {
+            setStatus("error");
+            setError(event.error || "Analysis failed");
+          }
+        },
+        // onDone
+        () => {
+          // Stream closed; if not already complete, fetch result
+          if (status !== "complete" && status !== "error") {
+            fetchFinalResult(analysisId);
+          }
+        },
+        // onError - fall back to polling
+        () => {
+          pollForResult(analysisId);
+        }
+      );
+
+      sseControllerRef.current = controller;
+    },
+    [fetchFinalResult, pollForResult, status]
   );
 
   const submit = useCallback(
-    async (request: AnalysisRequest) => {
+    async (request: AnalysisSubmitRequest) => {
       stopPolling();
+      stopStreaming();
       setStatus("submitting");
       setError(null);
       setResult(null);
+      setAgentProgress(
+        AGENT_NAMES.map((name) => ({ agent: name, status: "waiting" }))
+      );
 
       try {
         const response = await apiClient.submitAnalysis(request);
-        const analysis = response.data;
+        const analysisId = response.analysis_id;
 
-        setResult(analysis);
-        pollForResult(analysis.id);
+        // Use polling to track progress (SSE requires orchestrator integration)
+        pollForResult(analysisId);
       } catch (err) {
         setStatus("error");
         setError(
@@ -99,15 +211,21 @@ export function useAnalysis(): UseAnalysisReturn {
         );
       }
     },
-    [stopPolling, pollForResult]
+    [stopPolling, stopStreaming, startStreaming]
   );
 
   const reset = useCallback(() => {
     stopPolling();
+    stopStreaming();
     setResult(null);
     setStatus("idle");
     setError(null);
-  }, [stopPolling]);
+    setAgentProgress(
+      AGENT_NAMES.map((name) => ({ agent: name, status: "waiting" }))
+    );
+  }, [stopPolling, stopStreaming]);
 
-  return { result, status, error, submit, reset };
+  return { result, status, error, agentProgress, submit, reset };
 }
+
+export type { AgentProgress, AnalysisStatus, UseAnalysisReturn };
