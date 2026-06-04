@@ -35,6 +35,77 @@ logger = logging.getLogger(__name__)
 _worker_task: asyncio.Task[None] | None = None
 
 
+async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, object]:
+    """Chunk, embed, and extract entities from an uploaded document."""
+    import json
+
+    from app.core.database import async_session_factory
+    from app.core.neo4j_client import neo4j_client
+    from app.graph.entity_extractor import extract_entities
+    from app.graph.service import KnowledgeGraphService
+    from app.rag.chunker import chunk_text
+    from app.rag.embeddings import embed_batch
+
+    document_id = str(payload["document_id"])
+    title = str(payload["title"])
+    content = str(payload["content"])
+
+    logger.info("ingestion_started document_id=%s title=%s", document_id, title[:60])
+
+    try:
+        chunks = chunk_text(content, metadata={"document_id": document_id, "title": title})
+        logger.info("ingestion_chunked document_id=%s chunks=%d", document_id, len(chunks))
+
+        contents = [c.content for c in chunks]
+        embeddings = await embed_batch(contents)
+        logger.info("ingestion_embedded document_id=%s", document_id)
+
+        async with async_session_factory() as db:
+            from sqlalchemy import text as sql_text
+            for chunk, embedding in zip(chunks, embeddings):
+                embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
+                await db.execute(
+                    sql_text(
+                        "INSERT INTO document_chunks (id, document_id, content, embedding, chunk_index, metadata) "
+                        "VALUES (:id, :doc_id, :content, cast(:emb as vector), :idx, cast(:meta as jsonb))"
+                    ),
+                    {
+                        "id": chunk.id,
+                        "doc_id": document_id,
+                        "content": chunk.content,
+                        "emb": embedding_str,
+                        "idx": chunk.chunk_index,
+                        "meta": json.dumps(chunk.metadata),
+                    },
+                )
+            await db.commit()
+
+        logger.info("ingestion_stored document_id=%s chunks=%d", document_id, len(chunks))
+
+        # Entity extraction for knowledge graph (best-effort)
+        try:
+            entities, relationships = await extract_entities(
+                content[:8000], document_id=document_id
+            )
+            graph_service = KnowledgeGraphService(neo4j_client)
+            for entity in entities:
+                await graph_service.upsert_entity(entity)
+            for rel in relationships:
+                await graph_service.upsert_relationship(rel)
+            logger.info(
+                "ingestion_entities document_id=%s entities=%d relationships=%d",
+                document_id, len(entities), len(relationships),
+            )
+        except Exception:
+            logger.exception("ingestion_entity_extraction_failed document_id=%s", document_id)
+
+        return {"status": "completed", "document_id": document_id, "chunks": len(chunks)}
+
+    except Exception as exc:
+        logger.exception("ingestion_failed document_id=%s", document_id)
+        raise
+
+
 async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]:
     """Run the multi-agent analysis pipeline and persist results."""
     from datetime import datetime, timezone
@@ -110,9 +181,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.warning("Neo4j connection failed (non-fatal): %s", exc)
 
-    # Register analysis handler and start background task worker
+    # Register task handlers and start background task worker
     task_queue = get_task_queue()
     task_queue.register("analysis", _handle_analysis_task)
+    task_queue.register("document_ingestion", _handle_document_ingestion)
     _worker_task = asyncio.create_task(task_queue.start_worker())
     logger.info("Background task worker started.")
 
