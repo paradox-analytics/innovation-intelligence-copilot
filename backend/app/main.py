@@ -185,21 +185,23 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
         await db.commit()
 
         try:
-            analysis_result = await run_analysis(query=query)
+            # Try the full LangGraph orchestrator first
+            try:
+                analysis_result = await run_analysis(query=query)
+                from dataclasses import asdict
+                result_dict = asdict(analysis_result)
+                confidence = analysis_result.confidence_score
+            except Exception as orch_err:
+                logger.warning("Orchestrator failed, using direct analysis: %s", orch_err)
+                result_dict, confidence = await _direct_analysis(query)
 
-            # Persist results
             analysis.status = AnalysisStatus.COMPLETED
-            analysis.confidence_score = analysis_result.confidence_score
-            from dataclasses import asdict
-            analysis.result = asdict(analysis_result)
+            analysis.confidence_score = confidence
+            analysis.result = result_dict
             analysis.completed_at = datetime.now(timezone.utc)
             await db.commit()
 
-            logger.info(
-                "analysis_completed analysis_id=%s confidence=%.1f",
-                analysis_id,
-                analysis_result.confidence_score,
-            )
+            logger.info("analysis_completed analysis_id=%s confidence=%.1f", analysis_id, confidence)
             return {"status": "completed", "analysis_id": analysis_id}
 
         except Exception as exc:
@@ -209,6 +211,54 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
             await db.commit()
             logger.exception("analysis_failed analysis_id=%s", analysis_id)
             raise
+
+
+async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
+    """Fallback: single Claude call that produces the full analysis."""
+    import anthropic
+    from app.core.config import settings
+
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    response = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=8192,
+        system=(
+            "You are a strategic technology analyst. Analyze the question and return a JSON object with:\n"
+            '{"recommendation": "your recommendation text",'
+            '"confidence_score": 0-100,'
+            '"executive_summary": "2-3 paragraph summary",'
+            '"supporting_evidence": [{"claim": "...", "confidence": 0.0-1.0, "supporting_sources": []}],'
+            '"contrarian_evidence": [{"claim": "...", "confidence": 0.0-1.0, "supporting_sources": []}],'
+            '"risks": [{"description": "...", "category": "strategic|technical|market|regulatory", "severity": "low|medium|high|critical", "likelihood": "unlikely|possible|likely|almost_certain", "mitigation": "..."}],'
+            '"key_assumptions": ["assumption 1", ...],'
+            '"technology_signals": []}\n'
+            "Return ONLY valid JSON, no markdown fences."
+        ),
+        messages=[{"role": "user", "content": f"Strategic question: {query}"}],
+    )
+
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        lines = raw.split("\n")
+        lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        raw = "\n".join(lines).strip()
+
+    import json as json_mod
+    try:
+        result = json_mod.loads(raw)
+    except json_mod.JSONDecodeError:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            result = json_mod.loads(raw[start:end + 1])
+        else:
+            result = {"recommendation": raw, "confidence_score": 50, "executive_summary": raw}
+
+    confidence = float(result.get("confidence_score", 50))
+    return result, confidence
 
 
 @asynccontextmanager
