@@ -1,7 +1,6 @@
 "use client";
 
 import { DashboardLayout } from "@/components/dashboard/layout";
-import { ConfidenceGauge } from "@/components/reports/confidence-gauge";
 import {
   ComparisonView,
   type AnalysisSummary,
@@ -16,8 +15,6 @@ import {
   DialogBody,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 import {
   ArrowLeftRight,
   Calendar,
@@ -32,7 +29,13 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-// --- Types ---
+interface StructuredRisk {
+  description: string;
+  category: string;
+  severity: string;
+  likelihood: string;
+  mitigation: string;
+}
 
 interface Report {
   id: string;
@@ -42,12 +45,11 @@ interface Report {
   date: string;
   status: "complete" | "processing";
   executiveSummary: string;
-  risks: string[];
+  risks: StructuredRisk[];
   assumptions: string[];
-  fullReport: string;
+  supportingCount: number;
+  contrarianCount: number;
 }
-
-// --- Helpers ---
 
 function getRecommendationBadge(confidence: number): {
   label: string;
@@ -63,9 +65,34 @@ function normalizeScore(score: number): number {
   return score <= 1 ? Math.round(score * 100) : Math.round(score);
 }
 
+function severityColor(severity: string): BadgeVariant {
+  switch (severity.toLowerCase()) {
+    case "critical": return "rose";
+    case "high": return "amber";
+    case "medium": return "default";
+    case "low": return "emerald";
+    default: return "default";
+  }
+}
+
 function extractStrings(val: unknown): string[] {
   if (!Array.isArray(val)) return [];
-  return val.map((item) => String(item));
+  return val.map((item) =>
+    typeof item === "object" && item !== null && "description" in item
+      ? String((item as Record<string, unknown>).description)
+      : String(item)
+  );
+}
+
+function extractRisks(val: unknown): StructuredRisk[] {
+  if (!Array.isArray(val)) return [];
+  return val.map((item: Record<string, unknown>) => ({
+    description: String(item.description ?? ""),
+    category: String(item.category ?? "general"),
+    severity: String(item.severity ?? "medium"),
+    likelihood: String(item.likelihood ?? "possible"),
+    mitigation: String(item.mitigation ?? ""),
+  }));
 }
 
 function savedAnalysisToReport(saved: {
@@ -83,38 +110,25 @@ function savedAnalysisToReport(saved: {
   const executiveSummary = result.executive_summary
     ? String(result.executive_summary)
     : "";
-  const risks = extractStrings(
-    result.risks ?? result.strategic_risks
-  );
+  const risks = extractRisks(result.risks ?? result.strategic_risks);
   const assumptions = extractStrings(result.key_assumptions);
-
-  // Build a full report from available data
-  const sections = [
-    `# Strategic Analysis: ${saved.question}`,
-    "",
-    executiveSummary ? `## Executive Summary\n\n${executiveSummary}` : "",
-    recommendation ? `## Recommendation\n\n${recommendation}` : "",
-    risks.length > 0
-      ? `## Risk Assessment\n\n${risks.map((r) => `- ${r}`).join("\n")}`
-      : "",
-    assumptions.length > 0
-      ? `## Key Assumptions\n\n${assumptions.map((a) => `- ${a}`).join("\n")}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const supportingCount = Array.isArray(result.supporting_evidence) ? result.supporting_evidence.length : 0;
+  const contrarianCount = Array.isArray(result.contrarian_evidence) ? result.contrarian_evidence.length : 0;
 
   return {
     id: saved.id,
     question: saved.question,
     recommendation,
     confidence: normalizeScore(confidence),
-    date: new Date(saved.timestamp).toLocaleDateString(),
+    date: new Date(saved.timestamp).toLocaleDateString("en-US", {
+      year: "numeric", month: "long", day: "numeric",
+    }),
     status: "complete",
     executiveSummary,
     risks,
     assumptions,
-    fullReport: sections,
+    supportingCount,
+    contrarianCount,
   };
 }
 
@@ -125,12 +139,9 @@ export default function ReportsPage() {
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [showCompare, setShowCompare] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  // Data state
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load reports from localStorage saved analyses (same source as analyze page)
   useEffect(() => {
     setLoading(true);
     try {
@@ -142,29 +153,19 @@ export default function ReportsPage() {
           timestamp: string;
           confidence: number | null;
         }>;
-
-        // Also try to load cached results
         const reportList: Report[] = parsed.map((saved) => {
-          // Try to load detailed result from individual cache
           let result: Record<string, unknown> | null = null;
           try {
-            const cachedResult = localStorage.getItem(
-              `iic-analysis-${saved.id}`
-            );
+            const cachedResult = localStorage.getItem(`iic-analysis-${saved.id}`);
             if (cachedResult) {
               result = JSON.parse(cachedResult) as Record<string, unknown>;
             }
-          } catch {
-            // ignore
-          }
+          } catch { /* ignore */ }
           return savedAnalysisToReport({ ...saved, result });
         });
-
         setReports(reportList);
       }
-    } catch {
-      // ignore
-    } finally {
+    } catch { /* ignore */ } finally {
       setLoading(false);
     }
   }, []);
@@ -183,32 +184,36 @@ export default function ReportsPage() {
     });
   };
 
-  const handleExportMarkdown = (report: Report) => {
-    const blob = new Blob([report.fullReport], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `report-${report.id}.md`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const handleCopyReport = async (report: Report) => {
+    const text = [
+      `STRATEGIC INTELLIGENCE REPORT`,
+      ``,
+      report.question,
+      `Confidence: ${report.confidence}%`,
+      `Date: ${report.date}`,
+      ``,
+      `RECOMMENDATION`,
+      report.recommendation,
+      ``,
+      `EXECUTIVE SUMMARY`,
+      report.executiveSummary,
+      ``,
+      `RISKS (${report.risks.length})`,
+      ...report.risks.map((r, i) => `${i + 1}. [${r.severity}/${r.category}] ${r.description}`),
+      ``,
+      `KEY ASSUMPTIONS`,
+      ...report.assumptions.map((a, i) => `${i + 1}. ${a}`),
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
   };
 
   const handleExportJson = (report: Report) => {
-    const data = {
-      id: report.id,
-      question: report.question,
-      recommendation: report.recommendation,
-      confidence: report.confidence,
-      date: report.date,
-      executiveSummary: report.executiveSummary,
-      risks: report.risks,
-      assumptions: report.assumptions,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -217,16 +222,6 @@ export default function ReportsPage() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
-
-  const handleCopyReport = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // ignore
-    }
   };
 
   const compareReportA = reports.find((r) => r.id === compareSelection[0]);
@@ -238,14 +233,13 @@ export default function ReportsPage() {
     recommendation: report.recommendation,
     confidence: report.confidence,
     date: report.date,
-    risks: report.risks,
+    risks: report.risks.map((r) => r.description),
     assumptions: report.assumptions,
   });
 
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-5xl space-y-6 p-6">
-        {/* Page header */}
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Reports</h1>
@@ -270,41 +264,30 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* Compare bar */}
         {compareMode && (
           <div className="flex items-center justify-between rounded-lg border border-accent-blue/30 bg-accent-blue/5 px-4 py-3 animate-fade-in">
             <p className="text-sm text-text-secondary">
-              Select 2 reports to compare side by side.{" "}
-              <span className="font-medium text-accent-blue">
-                {compareSelection.length}/2 selected
-              </span>
+              Select 2 reports to compare.{" "}
+              <span className="font-medium text-accent-blue">{compareSelection.length}/2 selected</span>
             </p>
             {compareSelection.length === 2 && (
-              <Button size="sm" onClick={() => setShowCompare(true)}>
-                Compare Now
-              </Button>
+              <Button size="sm" onClick={() => setShowCompare(true)}>Compare Now</Button>
             )}
           </div>
         )}
 
-        {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-accent-blue" />
           </div>
         )}
 
-        {/* Empty state */}
         {!loading && reports.length === 0 && (
           <Card>
             <CardContent className="py-16 text-center">
               <FileText className="mx-auto h-12 w-12 text-text-muted/50" />
-              <h3 className="mt-4 text-sm font-semibold text-text-primary">
-                No reports yet
-              </h3>
-              <p className="mt-1 text-sm text-text-muted">
-                Run a strategic analysis to generate your first report.
-              </p>
+              <h3 className="mt-4 text-sm font-semibold text-text-primary">No reports yet</h3>
+              <p className="mt-1 text-sm text-text-muted">Run a strategic analysis to generate your first report.</p>
               <Link href="/analyze">
                 <Button className="mt-4">
                   <Sparkles className="h-4 w-4" />
@@ -315,7 +298,6 @@ export default function ReportsPage() {
           </Card>
         )}
 
-        {/* Search */}
         {!loading && reports.length > 0 && (
           <>
             <div className="relative w-full max-w-sm">
@@ -329,7 +311,6 @@ export default function ReportsPage() {
               />
             </div>
 
-            {/* Report list */}
             <div className="space-y-3">
               {filteredReports.map((report) => {
                 const badge = getRecommendationBadge(report.confidence);
@@ -337,10 +318,9 @@ export default function ReportsPage() {
                 return (
                   <Card
                     key={report.id}
-                    className={cn(
-                      "transition-all duration-200 hover:border-accent-blue/30 cursor-pointer",
-                      isSelected && "border-accent-blue/50 bg-accent-blue/5"
-                    )}
+                    className={`transition-all duration-200 hover:border-accent-blue/30 cursor-pointer ${
+                      isSelected ? "border-accent-blue/50 bg-accent-blue/5" : ""
+                    }`}
                     onClick={() => {
                       if (compareMode) {
                         toggleCompareSelect(report.id);
@@ -367,30 +347,25 @@ export default function ReportsPage() {
                               {report.question}
                             </h3>
                             <div className="flex shrink-0 items-center gap-2">
-                              <Badge variant={badge.variant}>
-                                {badge.label}
-                              </Badge>
-                              <ConfidenceGauge
-                                score={report.confidence}
-                                size={48}
-                                strokeWidth={4}
-                              />
+                              <Badge variant={badge.variant}>{badge.label}</Badge>
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-accent-blue">
+                                <span className="text-xs font-bold text-accent-blue">{report.confidence}%</span>
+                              </div>
                             </div>
                           </div>
-                          {report.recommendation && (
-                            <p className="mt-2 text-sm text-text-secondary line-clamp-2">
-                              {report.recommendation}
-                            </p>
-                          )}
                           <div className="mt-3 flex items-center gap-4 text-xs text-text-muted">
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3.5 w-3.5" />
                               {report.date}
                             </span>
                             {report.risks.length > 0 && (
-                              <span>
-                                {report.risks.length} risks identified
-                              </span>
+                              <span>{report.risks.length} risks</span>
+                            )}
+                            {report.supportingCount > 0 && (
+                              <span className="text-accent-emerald">{report.supportingCount} supporting</span>
+                            )}
+                            {report.contrarianCount > 0 && (
+                              <span className="text-accent-rose">{report.contrarianCount} contrarian</span>
                             )}
                           </div>
                         </div>
@@ -402,149 +377,135 @@ export default function ReportsPage() {
                   </Card>
                 );
               })}
-
-              {filteredReports.length === 0 && reports.length > 0 && (
-                <div className="py-12 text-center text-sm text-text-muted">
-                  No reports found matching your search.
-                </div>
-              )}
             </div>
           </>
         )}
 
-        {/* Report Detail Modal */}
+        {/* Report Detail Modal — Professional Format */}
         <Dialog
           open={selectedReport !== null}
           onClose={() => setSelectedReport(null)}
-          className="max-w-2xl"
+          className="max-w-3xl"
         >
           {selectedReport && (
             <>
-              <DialogHeader>
-                <DialogTitle>{selectedReport.question}</DialogTitle>
-              </DialogHeader>
               <DialogBody>
-                <Tabs defaultValue="summary">
-                  <TabsList className="w-fit">
-                    <TabsTrigger value="summary">Summary</TabsTrigger>
-                    <TabsTrigger value="report">Full Report</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="summary" className="mt-4 space-y-5">
-                    {/* Confidence + Recommendation */}
-                    <div className="flex items-center gap-4">
-                      <ConfidenceGauge
-                        score={selectedReport.confidence}
-                        size={80}
-                        strokeWidth={6}
-                      />
-                      <div className="space-y-1">
-                        <Badge
-                          variant={
-                            getRecommendationBadge(
-                              selectedReport.confidence
-                            ).variant
-                          }
-                        >
-                          {
-                            getRecommendationBadge(
-                              selectedReport.confidence
-                            ).label
-                          }
+                <div className="space-y-6">
+                  {/* Header */}
+                  <div className="border-b border-border-primary pb-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-accent-blue">
+                      Strategic Intelligence Report
+                    </p>
+                    <h2 className="mt-2 text-lg font-bold text-text-primary leading-tight">
+                      {selectedReport.question}
+                    </h2>
+                    <div className="mt-2 flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-accent-blue">
+                        <span className="text-sm font-bold text-accent-blue">{selectedReport.confidence}%</span>
+                      </div>
+                      <div>
+                        <Badge variant={getRecommendationBadge(selectedReport.confidence).variant}>
+                          {getRecommendationBadge(selectedReport.confidence).label}
                         </Badge>
-                        <p className="text-xs text-text-muted">
-                          {selectedReport.date}
-                        </p>
+                        <p className="mt-0.5 text-xs text-text-tertiary">{selectedReport.date}</p>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Recommendation */}
-                    {selectedReport.recommendation && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium uppercase text-text-muted">
-                          Recommendation
-                        </p>
-                        <p className="text-sm text-text-primary">
-                          {selectedReport.recommendation}
-                        </p>
-                      </div>
-                    )}
+                  {/* Metrics */}
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="rounded-lg bg-bg-tertiary p-3 text-center">
+                      <div className="text-lg font-bold text-accent-emerald">{selectedReport.supportingCount}</div>
+                      <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Supporting</div>
+                    </div>
+                    <div className="rounded-lg bg-bg-tertiary p-3 text-center">
+                      <div className="text-lg font-bold text-accent-rose">{selectedReport.contrarianCount}</div>
+                      <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Contrarian</div>
+                    </div>
+                    <div className="rounded-lg bg-bg-tertiary p-3 text-center">
+                      <div className="text-lg font-bold text-accent-amber">{selectedReport.risks.length}</div>
+                      <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Risks</div>
+                    </div>
+                    <div className="rounded-lg bg-bg-tertiary p-3 text-center">
+                      <div className="text-lg font-bold text-accent-blue">{selectedReport.assumptions.length}</div>
+                      <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Assumptions</div>
+                    </div>
+                  </div>
 
-                    {/* Executive Summary */}
-                    {selectedReport.executiveSummary && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium uppercase text-text-muted">
-                          Executive Summary
-                        </p>
-                        <p className="text-sm leading-relaxed text-text-secondary">
-                          {selectedReport.executiveSummary}
-                        </p>
+                  {/* Recommendation */}
+                  {selectedReport.recommendation && (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-text-tertiary">Recommendation</p>
+                      <div className="rounded-lg border-l-4 border-accent-blue bg-bg-tertiary px-4 py-3">
+                        <p className="text-sm font-medium text-text-primary">{selectedReport.recommendation}</p>
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Risks */}
-                    {selectedReport.risks.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium uppercase text-text-muted">
-                          Risks ({selectedReport.risks.length})
-                        </p>
-                        <ul className="space-y-1.5">
-                          {selectedReport.risks.map((risk, i) => (
-                            <li
-                              key={i}
-                              className="flex items-start gap-2 text-xs text-text-secondary"
-                            >
-                              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent-amber" />
-                              {risk}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </TabsContent>
+                  {/* Executive Summary */}
+                  {selectedReport.executiveSummary && (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-text-tertiary">Executive Summary</p>
+                      <p className="text-sm leading-relaxed text-text-secondary">{selectedReport.executiveSummary}</p>
+                    </div>
+                  )}
 
-                  <TabsContent value="report" className="mt-4">
-                    {selectedReport.fullReport ? (
-                      <div className="rounded-lg bg-bg-tertiary p-4">
-                        <pre className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary font-sans">
-                          {selectedReport.fullReport}
-                        </pre>
-                      </div>
-                    ) : (
-                      <p className="py-8 text-center text-sm text-text-muted">
-                        No detailed report available for this analysis.
+                  {/* Risks Table */}
+                  {selectedReport.risks.length > 0 && (
+                    <div>
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-tertiary">
+                        Risk Assessment ({selectedReport.risks.length})
                       </p>
-                    )}
-                  </TabsContent>
-                </Tabs>
+                      <div className="space-y-3">
+                        {selectedReport.risks.map((risk, i) => (
+                          <div key={i} className="rounded-lg border border-border-primary bg-bg-tertiary p-3">
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <Badge variant={severityColor(risk.severity)}>{risk.severity}</Badge>
+                              <Badge variant="default">{risk.category}</Badge>
+                              <span className="text-[10px] text-text-tertiary">Likelihood: {risk.likelihood}</span>
+                            </div>
+                            <p className="text-sm text-text-primary">{risk.description}</p>
+                            {risk.mitigation && (
+                              <p className="mt-1.5 text-xs text-text-tertiary">
+                                <span className="font-medium text-accent-emerald">Mitigation:</span> {risk.mitigation}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Assumptions */}
+                  {selectedReport.assumptions.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-text-tertiary">Key Assumptions</p>
+                      <ul className="space-y-1.5">
+                        {selectedReport.assumptions.map((a, i) => (
+                          <li key={i} className="flex gap-2 text-sm text-text-secondary">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent-blue" />
+                            {a}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </DialogBody>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    handleCopyReport(selectedReport.fullReport)
-                  }
-                >
+                <Button variant="outline" size="sm" onClick={() => handleCopyReport(selectedReport)}>
                   <ClipboardCopy className="h-4 w-4" />
                   {copied ? "Copied!" : "Copy"}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleExportMarkdown(selectedReport)}
-                >
-                  <FileText className="h-4 w-4" />
-                  Markdown
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleExportJson(selectedReport)}
-                >
+                <Button variant="outline" size="sm" onClick={() => handleExportJson(selectedReport)}>
                   <FileJson className="h-4 w-4" />
                   JSON
                 </Button>
+                <Link href={`/analyze?id=${selectedReport.id}`}>
+                  <Button size="sm">
+                    View Full Analysis
+                  </Button>
+                </Link>
               </DialogFooter>
             </>
           )}
@@ -552,11 +513,7 @@ export default function ReportsPage() {
 
         {/* Comparison Dialog */}
         <Dialog
-          open={
-            showCompare &&
-            compareReportA !== undefined &&
-            compareReportB !== undefined
-          }
+          open={showCompare && compareReportA !== undefined && compareReportB !== undefined}
           onClose={() => setShowCompare(false)}
           className="max-w-4xl"
         >
@@ -572,11 +529,7 @@ export default function ReportsPage() {
                 />
               </DialogBody>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowCompare(false)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setShowCompare(false)}>
                   Close
                 </Button>
               </DialogFooter>
