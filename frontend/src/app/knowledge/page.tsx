@@ -858,17 +858,17 @@ export default function KnowledgePage() {
                     </h5>
                     <div className="space-y-1.5">
                       {Object.entries(selectedEntity.properties)
-                        .filter(([key]) => !key.startsWith("source_document") && key !== "id")
+                        .filter(([key]) => !key.startsWith("source_document") && key !== "id" && key !== "source_doc")
                         .map(([key, value]) => (
                           <div
                             key={key}
-                            className="flex items-start justify-between gap-3 rounded bg-bg-tertiary px-3 py-1.5 text-xs"
+                            className="grid grid-cols-[1fr_1fr] gap-2 rounded bg-bg-tertiary px-3 py-1.5 text-xs overflow-hidden"
                           >
-                            <span className="shrink-0 text-text-muted">
+                            <span className="text-text-muted truncate">
                               {key.replace(/_/g, " ")}
                             </span>
-                            <span className="font-medium text-text-primary text-right break-words min-w-0">
-                              {String(value).length > 60 ? `${String(value).slice(0, 60)}...` : value}
+                            <span className="font-medium text-text-primary text-right truncate" title={String(value)}>
+                              {String(value)}
                             </span>
                           </div>
                         ))}
