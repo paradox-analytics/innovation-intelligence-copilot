@@ -78,16 +78,27 @@ async def upload_document(
     await db.commit()
 
     # Trigger background ingestion (chunking + embedding + entity extraction)
-    from app.core.tasks import get_task_queue
-    queue = get_task_queue()
-    await queue.enqueue(
-        task_type="document_ingestion",
-        payload={
-            "document_id": document.id,
-            "title": title,
-            "content": content[:50000],
-        },
-    )
+    try:
+        from app.core.tasks import get_task_queue
+        queue = get_task_queue()
+        await queue.enqueue(
+            task_type="document_ingestion",
+            payload={
+                "document_id": document.id,
+                "title": title,
+                "content": content[:50000],
+            },
+        )
+    except Exception:
+        import asyncio
+        from app.main import _handle_document_ingestion
+        asyncio.create_task(
+            _handle_document_ingestion({
+                "document_id": document.id,
+                "title": title,
+                "content": content[:50000],
+            })
+        )
 
     return {
         "data": DocumentResponse(

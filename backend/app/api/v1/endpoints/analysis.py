@@ -71,11 +71,23 @@ async def submit_analysis(
     db.add(analysis)
     await db.commit()
 
-    await enqueue_analysis(
-        analysis_id=analysis.id,
-        query=body.query,
-        context=body.context or {},
-    )
+    # Try Redis queue first, fall back to direct background task
+    try:
+        await enqueue_analysis(
+            analysis_id=analysis.id,
+            query=body.query,
+            context=body.context or {},
+        )
+    except Exception:
+        import asyncio
+        from app.main import _handle_analysis_task
+        asyncio.create_task(
+            _handle_analysis_task({
+                "analysis_id": analysis.id,
+                "query": body.query,
+                "context": body.context or {},
+            })
+        )
 
     return {
         "data": AnalysisSubmitResponse(
