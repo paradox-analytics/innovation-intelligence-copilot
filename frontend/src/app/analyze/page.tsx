@@ -109,9 +109,42 @@ function extractRiskItems(items: unknown): RiskItem[] {
   }));
 }
 
+interface StructuredRisk {
+  description: string;
+  category: string;
+  severity: string;
+  likelihood: string;
+  mitigation: string;
+}
+
 function extractStrings(items: unknown): string[] {
   if (!Array.isArray(items)) return [];
-  return items.map((item) => String(item));
+  return items.map((item) =>
+    typeof item === "object" && item !== null && "description" in item
+      ? String((item as Record<string, unknown>).description)
+      : String(item)
+  );
+}
+
+function extractStructuredRisks(items: unknown): StructuredRisk[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item: Record<string, unknown>) => ({
+    description: String(item.description ?? ""),
+    category: String(item.category ?? "general"),
+    severity: String(item.severity ?? "medium"),
+    likelihood: String(item.likelihood ?? "possible"),
+    mitigation: String(item.mitigation ?? ""),
+  }));
+}
+
+function severityColor(severity: string): BadgeVariant {
+  switch (severity.toLowerCase()) {
+    case "critical": return "rose";
+    case "high": return "amber";
+    case "medium": return "default";
+    case "low": return "emerald";
+    default: return "default";
+  }
 }
 
 function extractSignals(items: unknown): SignalCardData[] {
@@ -236,7 +269,8 @@ export default function AnalyzePage() {
     "contrarian"
   );
   const riskItems = extractRiskItems(analysisResult?.risk_items);
-  const risks = extractStrings(analysisResult?.risks ?? analysisResult?.strategic_risks);
+  const structuredRisks = extractStructuredRisks(analysisResult?.risks ?? analysisResult?.strategic_risks);
+  const risks = structuredRisks.map((r) => r.description);
   const assumptions = extractStrings(analysisResult?.key_assumptions);
   const signals = extractSignals(analysisResult?.technology_signals);
 
@@ -636,6 +670,94 @@ export default function AnalyzePage() {
                       </CardContent>
                     </Card>
 
+                    {/* Analysis Indicators */}
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div className="rounded-lg border border-border-primary bg-bg-secondary p-3 text-center">
+                        <div className="text-2xl font-bold text-accent-emerald">{supportingEvidence.length}</div>
+                        <div className="text-xs text-text-tertiary">Supporting</div>
+                      </div>
+                      <div className="rounded-lg border border-border-primary bg-bg-secondary p-3 text-center">
+                        <div className="text-2xl font-bold text-accent-rose">{contrarianEvidence.length}</div>
+                        <div className="text-xs text-text-tertiary">Contrarian</div>
+                      </div>
+                      <div className="rounded-lg border border-border-primary bg-bg-secondary p-3 text-center">
+                        <div className="text-2xl font-bold text-accent-amber">{structuredRisks.length}</div>
+                        <div className="text-xs text-text-tertiary">Risks</div>
+                      </div>
+                      <div className="rounded-lg border border-border-primary bg-bg-secondary p-3 text-center">
+                        <div className="text-2xl font-bold text-accent-blue">{assumptions.length}</div>
+                        <div className="text-xs text-text-tertiary">Assumptions</div>
+                      </div>
+                    </div>
+
+                    {/* Risk Severity Breakdown */}
+                    {structuredRisks.length > 0 && (
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="mb-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Risk Severity Distribution</div>
+                          <div className="flex gap-2">
+                            {(["critical", "high", "medium", "low"] as const).map((level) => {
+                              const count = structuredRisks.filter((r) => r.severity.toLowerCase() === level).length;
+                              if (count === 0) return null;
+                              const total = structuredRisks.length;
+                              const pct = Math.round((count / total) * 100);
+                              const colors: Record<string, string> = {
+                                critical: "bg-red-500",
+                                high: "bg-amber-500",
+                                medium: "bg-yellow-500",
+                                low: "bg-emerald-500",
+                              };
+                              return (
+                                <div key={level} className="flex-1">
+                                  <div className="mb-1 flex items-center justify-between text-xs">
+                                    <span className="capitalize text-text-secondary">{level}</span>
+                                    <span className="text-text-tertiary">{count}</span>
+                                  </div>
+                                  <div className="h-2 w-full rounded-full bg-bg-tertiary">
+                                    <div
+                                      className={cn("h-2 rounded-full", colors[level])}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Evidence Balance */}
+                    {(supportingEvidence.length > 0 || contrarianEvidence.length > 0) && (
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="mb-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Evidence Balance</div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-accent-emerald">{supportingEvidence.length} for</span>
+                            <div className="flex h-3 flex-1 overflow-hidden rounded-full bg-bg-tertiary">
+                              {supportingEvidence.length + contrarianEvidence.length > 0 && (
+                                <>
+                                  <div
+                                    className="bg-emerald-500 transition-all"
+                                    style={{
+                                      width: `${(supportingEvidence.length / (supportingEvidence.length + contrarianEvidence.length)) * 100}%`,
+                                    }}
+                                  />
+                                  <div
+                                    className="bg-rose-500 transition-all"
+                                    style={{
+                                      width: `${(contrarianEvidence.length / (supportingEvidence.length + contrarianEvidence.length)) * 100}%`,
+                                    }}
+                                  />
+                                </>
+                              )}
+                            </div>
+                            <span className="text-xs text-accent-rose">{contrarianEvidence.length} against</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
                     {/* Executive Summary */}
                     {executiveSummary && (
                       <Card>
@@ -724,26 +846,44 @@ export default function AnalyzePage() {
                         </Card>
                       )}
 
-                      {risks.length > 0 && (
+                      {structuredRisks.length > 0 && (
                         <Card>
                           <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-base">
                               <AlertTriangle className="h-5 w-5 text-accent-amber" />
-                              Strategic Risks
+                              Strategic Risks ({structuredRisks.length})
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
-                            <ul className="space-y-2">
-                              {risks.map((risk, i) => (
-                                <li
+                            <div className="space-y-4">
+                              {structuredRisks.map((risk, i) => (
+                                <div
                                   key={i}
-                                  className="flex items-start gap-2 text-sm text-text-secondary"
+                                  className="rounded-lg border border-border-primary bg-bg-secondary p-4"
                                 >
-                                  <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent-amber" />
-                                  {risk}
-                                </li>
+                                  <div className="mb-2 flex items-center gap-2">
+                                    <Badge variant={severityColor(risk.severity)}>
+                                      {risk.severity}
+                                    </Badge>
+                                    <Badge variant="default">
+                                      {risk.category}
+                                    </Badge>
+                                    <span className="text-xs text-text-tertiary">
+                                      Likelihood: {risk.likelihood}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-text-primary">
+                                    {risk.description}
+                                  </p>
+                                  {risk.mitigation && (
+                                    <p className="mt-2 text-xs text-text-tertiary">
+                                      <span className="font-medium text-accent-emerald">Mitigation:</span>{" "}
+                                      {risk.mitigation}
+                                    </p>
+                                  )}
+                                </div>
                               ))}
-                            </ul>
+                            </div>
                           </CardContent>
                         </Card>
                       )}
