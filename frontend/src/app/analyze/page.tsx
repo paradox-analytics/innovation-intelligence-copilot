@@ -1,6 +1,9 @@
 "use client";
 
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { DashboardLayout } from "@/components/dashboard/layout";
+import { apiClient, type AnalysisResultResponse } from "@/lib/api";
 import { ConfidenceGauge } from "@/components/reports/confidence-gauge";
 import {
   EvidenceList,
@@ -164,16 +167,54 @@ function extractSignals(items: unknown): SignalCardData[] {
 // --- Page component ---
 
 export default function AnalyzePage() {
+  return (
+    <Suspense fallback={<DashboardLayout><div className="p-8 text-text-muted">Loading...</div></DashboardLayout>}>
+      <AnalyzePageContent />
+    </Suspense>
+  );
+}
+
+function AnalyzePageContent() {
+  const searchParams = useSearchParams();
   const [question, setQuestion] = useState("");
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([]);
   const [copied, setCopied] = useState(false);
+  const [loadedResult, setLoadedResult] = useState<AnalysisResultResponse | null>(null);
 
-  const { result, status, error, agentProgress, submit, reset } = useAnalysis();
+  const { result: liveResult, status, error, agentProgress, submit, reset: resetAnalysis } = useAnalysis();
 
+  const result = loadedResult ?? liveResult;
   const isLoading = status === "submitting" || status === "streaming" || status === "polling";
-  const isComplete = status === "complete" && result !== null;
-  const isIdle = status === "idle";
+  const isComplete = (status === "complete" && liveResult !== null) || loadedResult !== null;
+  const isIdle = status === "idle" && loadedResult === null;
+
+  const reset = useCallback(() => {
+    setLoadedResult(null);
+    resetAnalysis();
+    setQuestion("");
+    window.history.replaceState(null, "", "/analyze");
+  }, [resetAnalysis]);
+
+  // Load previous analysis from URL ?id= parameter
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (!id) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiClient.getAnalysis(id);
+        if (!cancelled && data.status === "COMPLETED") {
+          setLoadedResult(data);
+          setQuestion(data.query);
+        }
+      } catch {
+        // Analysis not found or failed — ignore, show empty form
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [searchParams]);
 
   // Load saved analyses from localStorage
   useEffect(() => {
@@ -246,7 +287,6 @@ export default function AnalyzePage() {
 
   const handleReset = () => {
     reset();
-    setQuestion("");
   };
 
   // Extract data from the analysis result
