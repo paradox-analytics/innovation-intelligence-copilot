@@ -145,3 +145,8 @@ async def readiness() -> ReadinessResponse:
         overall = "unhealthy"
 
     return ReadinessResponse(status=overall, checks=checks)
+
+
+@router.get("/version", tags=["system"])
+async def get_version() -> dict[str, str]:
+    return {"version": "1.1.0", "commit": "a7f213b-fallback"}
