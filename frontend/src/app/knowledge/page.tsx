@@ -849,25 +849,29 @@ export default function KnowledgePage() {
 
               {/* Properties */}
               {selectedEntity.properties &&
-                Object.keys(selectedEntity.properties).length > 0 && (
+                Object.keys(selectedEntity.properties).filter(
+                  (k) => !k.startsWith("source_document") && k !== "id"
+                ).length > 0 && (
                   <div className="space-y-2">
                     <h5 className="text-xs font-medium uppercase text-text-muted">
                       Properties
                     </h5>
                     <div className="space-y-1.5">
-                      {Object.entries(selectedEntity.properties).map(
-                        ([key, value]) => (
+                      {Object.entries(selectedEntity.properties)
+                        .filter(([key]) => !key.startsWith("source_document") && key !== "id")
+                        .map(([key, value]) => (
                           <div
                             key={key}
-                            className="flex items-center justify-between rounded bg-bg-tertiary px-3 py-1.5 text-xs"
+                            className="flex items-start justify-between gap-3 rounded bg-bg-tertiary px-3 py-1.5 text-xs"
                           >
-                            <span className="text-text-muted">{key}</span>
-                            <span className="font-medium text-text-primary">
-                              {value}
+                            <span className="shrink-0 text-text-muted">
+                              {key.replace(/_/g, " ")}
+                            </span>
+                            <span className="font-medium text-text-primary text-right break-words min-w-0">
+                              {String(value).length > 60 ? `${String(value).slice(0, 60)}...` : value}
                             </span>
                           </div>
-                        )
-                      )}
+                        ))}
                     </div>
                   </div>
                 )}
