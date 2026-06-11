@@ -40,8 +40,7 @@ async def _score_chunk(
 ) -> tuple[RetrievedChunk, int, str]:
     """Ask Claude to score a single chunk's relevance to the query."""
     user_prompt = (
-        f"Query: {query}\n\n"
-        f"Document chunk (from '{chunk.title}'):\n{chunk.content[:2000]}"
+        f"Query: {query}\n\nDocument chunk (from '{chunk.title}'):\n{chunk.content[:2000]}"
     )
 
     try:
@@ -90,11 +89,7 @@ async def cross_encoder_rerank(
         scored.extend(batch_results)
 
     # Filter below threshold and sort descending
-    filtered = [
-        (chunk, score, reason)
-        for chunk, score, reason in scored
-        if score >= threshold
-    ]
+    filtered = [(chunk, score, reason) for chunk, score, reason in scored if score >= threshold]
     filtered.sort(key=lambda x: x[1], reverse=True)
 
     reranked: list[RetrievedChunk] = []

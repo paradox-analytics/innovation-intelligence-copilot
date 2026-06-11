@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import enum
 import json
 import logging
 import time
+from collections.abc import Callable, Coroutine
 from dataclasses import asdict, dataclass, field
-from typing import Callable, Coroutine
 from uuid import uuid4
 
 from redis.asyncio import Redis
@@ -200,7 +199,7 @@ _task_queue: TaskQueue | None = None
 
 def get_task_queue() -> TaskQueue:
     """Return the global TaskQueue singleton, creating it if needed."""
-    global _task_queue  # noqa: PLW0603
+    global _task_queue
     if _task_queue is None:
         _task_queue = TaskQueue()
     return _task_queue

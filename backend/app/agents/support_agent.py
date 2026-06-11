@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
+from typing import Any
 
-from app.models import AgentInput, Evidence, SourceCitation
+from app.agents.retrieval import EvidenceSource, citations_for_indices
+from app.models import AgentInput, Evidence
 
 from .base import BaseAgent
 
@@ -13,58 +14,53 @@ SYSTEM_PROMPT = """\
 You are a technology investment analyst building the SUPPORTING case for a \
 technology adoption or investment decision.
 
-Given a strategic question and research evidence, identify the strongest \
-supporting factors for moving forward.
+You are given a numbered pool of retrieved sources (web and document). Identify \
+the strongest supporting factors, grounding each claim ONLY in the sources \
+provided. Cite the source index numbers your claim draws on.
 
 Return a JSON array:
 [
   {
-    "claim": "supporting factor",
+    "claim": "supporting factor, stated as a concrete claim",
     "confidence": 0.0-1.0,
-    "reasoning": "why this supports adoption/investment"
+    "source_indices": [0, 3]
   }
 ]
 
-Be specific and grounded in the evidence. Return valid JSON only, no markdown fences."""
+Every claim MUST cite at least one source index from the pool. Do not invent \
+sources or facts not present in the pool. Return valid JSON only, no markdown fences."""
 
 
 class SupportAgent(BaseAgent):
     name = "support"
-    description = "Builds the investment/adoption case using evidence"
+    description = "Builds the investment/adoption case grounded in retrieved sources"
 
     async def _run(self, input_data: AgentInput) -> dict[str, object]:
         query = input_data["query"]
         context = input_data["context"]
-        research_evidence: list[dict[str, object]] = context.get("research_evidence", [])  # type: ignore[assignment]
-
-        evidence_text = "\n".join(
-            f"- {e.get('claim', '')} (confidence: {e.get('confidence', 0)})"
-            for e in research_evidence
-        )
+        pool: list[EvidenceSource] = context.get("pool", [])  # type: ignore[assignment]
+        pool_text: str = str(context.get("evidence_pool", ""))
 
         user_prompt = (
             f"Strategic question: {query}\n\n"
-            f"Research evidence:\n{evidence_text}\n\n"
-            "Identify the strongest supporting factors."
+            f"Retrieved sources:\n{pool_text}\n\n"
+            "Identify the strongest supporting factors, citing source indices."
         )
 
         raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt)
-        parsed: list[dict[str, object]] = json.loads(raw)
+        parsed = self._parse_json(raw, [])
+        items: list[dict[str, Any]] = parsed if isinstance(parsed, list) else []
 
         evidence_list: list[Evidence] = []
-        for item in parsed:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            indices = [i for i in item.get("source_indices", []) if isinstance(i, int)]
             evidence_list.append(
                 Evidence(
                     claim=str(item.get("claim", "")),
-                    supporting_sources=[
-                        SourceCitation(
-                            document_id="derived",
-                            title="Support analysis",
-                            chunk_text=str(item.get("reasoning", "")),
-                            relevance_score=float(item.get("confidence", 0.0)),
-                        )
-                    ],
-                    confidence=float(item.get("confidence", 0.0)),
+                    supporting_sources=citations_for_indices(pool, indices),
+                    confidence=float(item.get("confidence", 0.0) or 0.0),
                 )
             )
 

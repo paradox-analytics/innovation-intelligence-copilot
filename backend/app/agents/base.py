@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import anthropic
+from anthropic.types import TextBlock
 
 from app.core.config import settings
+from app.core.usage import log_usage
 from app.models import AgentInput, AgentOutput, AgentTrace
 
 logger = logging.getLogger(__name__)
 
-# Defaults not already in the global Settings
-_DEFAULT_MODEL = "claude-sonnet-4-6"
+# Default extraction-agent model (cheap); overridable per-agent and via settings.
+_DEFAULT_MODEL = settings.AGENT_MODEL
 _DEFAULT_TIMEOUT_SECONDS = 120
 
 
@@ -28,11 +31,10 @@ class BaseAgent(ABC):
         self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     @abstractmethod
-    async def _run(self, input_data: AgentInput) -> dict[str, object]:
-        ...
+    async def _run(self, input_data: AgentInput) -> dict[str, object]: ...
 
     async def execute(self, input_data: AgentInput) -> AgentOutput:
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         start_ns = time.perf_counter_ns()
         error: str | None = None
         result: dict[str, object] = {}
@@ -44,7 +46,7 @@ class BaseAgent(ABC):
             logger.exception("Agent %s failed", self.name)
 
         duration_ms = (time.perf_counter_ns() - start_ns) / 1_000_000
-        finished = datetime.now(timezone.utc)
+        finished = datetime.now(UTC)
 
         trace = AgentTrace(
             agent_name=self.name,
@@ -68,4 +70,27 @@ class BaseAgent(ABC):
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
-        return response.content[0].text
+        log_usage(logger, self.name, self.model, response.usage)
+        block = response.content[0]
+        return block.text if isinstance(block, TextBlock) else ""
+
+    @staticmethod
+    def _parse_json(raw: str, default: object) -> object:
+        """Parse a JSON blob from a model response, tolerating markdown fences."""
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1]
+            if text.rstrip().endswith("```"):
+                text = text.rsplit("```", 1)[0]
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            for opener, closer in (("[", "]"), ("{", "}")):
+                start, end = text.find(opener), text.rfind(closer)
+                if 0 <= start < end:
+                    try:
+                        return json.loads(text[start : end + 1])
+                    except json.JSONDecodeError:
+                        continue
+            logger.warning("agent JSON parse failed; using default")
+            return default

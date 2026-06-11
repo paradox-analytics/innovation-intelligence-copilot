@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,7 +59,7 @@ async def upload_document(
     content_bytes = await file.read()
     content = content_bytes.decode("utf-8", errors="replace")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     document = Document(
         id=uuid4().hex,
         title=title,
@@ -80,6 +80,7 @@ async def upload_document(
     # Trigger background ingestion (chunking + embedding + entity extraction)
     try:
         from app.core.tasks import get_task_queue
+
         queue = get_task_queue()
         await queue.enqueue(
             task_type="document_ingestion",
@@ -91,13 +92,17 @@ async def upload_document(
         )
     except Exception:
         import asyncio
+
         from app.main import _handle_document_ingestion
-        asyncio.create_task(
-            _handle_document_ingestion({
-                "document_id": document.id,
-                "title": title,
-                "content": content[:50000],
-            })
+
+        asyncio.create_task(  # noqa: RUF006 — fire-and-forget fallback when Redis is down
+            _handle_document_ingestion(
+                {
+                    "document_id": document.id,
+                    "title": title,
+                    "content": content[:50000],
+                }
+            )
         )
 
     return {
@@ -165,9 +170,7 @@ async def get_document(
     document_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, DocumentDetailResponse]:
-    result = await db.execute(
-        select(Document).where(Document.id == document_id)
-    )
+    result = await db.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
     if document is None:
         raise HTTPException(
@@ -198,9 +201,7 @@ async def delete_document(
     document_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    result = await db.execute(
-        select(Document).where(Document.id == document_id)
-    )
+    result = await db.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
     if document is None:
         raise HTTPException(

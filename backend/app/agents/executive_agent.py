@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict
+from typing import Any
 
 from app.models import (
     AgentInput,
@@ -77,12 +78,18 @@ class ExecutiveAgent(BaseAgent):
         )
 
         raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt, max_tokens=4096)
-        parsed: dict[str, object] = json.loads(raw)
+        parsed_obj = self._parse_json(raw, {})
+        parsed: dict[str, Any] = parsed_obj if isinstance(parsed_obj, dict) else {}
+
+        try:
+            confidence_score = int(parsed.get("confidence_score", 0))
+        except (TypeError, ValueError):
+            confidence_score = 0
 
         result = AnalysisResult(
             query=query,
             recommendation=str(parsed.get("recommendation", "")),
-            confidence_score=int(parsed.get("confidence_score", 0)),  # type: ignore[arg-type]
+            confidence_score=confidence_score,
             executive_summary=str(parsed.get("executive_summary", "")),
             supporting_evidence=supporting,
             contrarian_evidence=contrarian,

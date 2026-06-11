@@ -7,17 +7,17 @@ Usage::
     python -m app.cli create-admin  # Create an admin user
     python -m app.cli health     # Check service connectivity
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from getpass import getpass
 from pathlib import Path
 from uuid import uuid4
-
 
 # ---------------------------------------------------------------------------
 # Seed command
@@ -26,7 +26,6 @@ from uuid import uuid4
 
 async def _seed() -> None:
     """Seed the database and Neo4j with sample data."""
-    from app.core.config import settings
     from app.core.database import async_session_factory, engine, init_db
     from app.core.neo4j_client import neo4j_client
     from app.models.analysis import AnalysisRequest, AnalysisStatus
@@ -45,7 +44,7 @@ async def _seed() -> None:
     print("Initialising database schema...")
     await init_db()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async with async_session_factory() as session:
         # Documents
@@ -222,7 +221,7 @@ async def _create_admin() -> None:
 
     await init_db()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     user = User(
         id=uuid4().hex,
         email=email,

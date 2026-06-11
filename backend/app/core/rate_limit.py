@@ -81,7 +81,7 @@ _limiter: RateLimiter | None = None
 
 
 def _get_limiter() -> RateLimiter:
-    global _limiter  # noqa: PLW0603
+    global _limiter
     if _limiter is None:
         _limiter = RateLimiter()
     return _limiter
@@ -101,7 +101,7 @@ def _client_key(request: Request) -> str:
     return f"rl:ip:{client_ip}"
 
 
-def rate_limit(config: RateLimitConfig = DEFAULT_RATE_LIMIT):  # noqa: ANN201
+def rate_limit(config: RateLimitConfig = DEFAULT_RATE_LIMIT):
     """Return a FastAPI dependency that enforces the given rate limit."""
 
     async def _dependency(request: Request) -> None:

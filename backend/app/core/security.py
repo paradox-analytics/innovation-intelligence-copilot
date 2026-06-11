@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import bcrypt
@@ -41,13 +41,11 @@ def create_access_token(
     extra_claims: dict[str, object] | None = None,
 ) -> str:
     """Create a signed JWT access token."""
-    expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
+    expire = datetime.now(UTC) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode: dict[str, object] = {
         "sub": subject,
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
     }
     if extra_claims:
         to_encode.update(extra_claims)
@@ -57,9 +55,7 @@ def create_access_token(
 def decode_access_token(token: str) -> dict[str, object]:
     """Decode and validate a JWT access token. Raises on invalid/expired."""
     try:
-        payload: dict[str, object] = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[ALGORITHM]
-        )
+        payload: dict[str, object] = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except JWTError as exc:
         raise HTTPException(
@@ -78,9 +74,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def get_current_user(
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None, Security(bearer_scheme)
-    ] = None,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)] = None,
     api_key: Annotated[str | None, Security(api_key_header)] = None,
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -125,7 +119,7 @@ async def get_current_user(
     return user
 
 
-def require_role(*roles: str):  # noqa: ANN201 — returns a FastAPI dependency
+def require_role(*roles: str):
     """Return a dependency that enforces the user has one of the given roles."""
 
     async def _check(

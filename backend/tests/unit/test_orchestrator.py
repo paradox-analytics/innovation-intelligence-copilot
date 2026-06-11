@@ -1,442 +1,182 @@
-"""Tests for the agent orchestrator."""
+"""Tests for the plain-async analysis orchestrator (run_analysis)."""
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.orchestrator import (
-    OrchestratorState,
-    build_graph,
-    executive_node,
-    parallel_analysis_node,
-    research_node,
-    run_analysis,
-)
-from app.models import (
-    AgentTrace,
-    AnalysisResult,
-    Evidence,
-    Likelihood,
-    RiskCategory,
-    RiskItem,
-    Severity,
-    SourceCitation,
-    TechnologySignal,
-    TrendDirection,
-)
+from app.agents.retrieval import EvidenceSource
+from app.models import AnalysisResult, Evidence, SourceCitation
+
+pytestmark = pytest.mark.unit
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+def _pool() -> list[EvidenceSource]:
+    return [
+        EvidenceSource(
+            index=0,
+            kind="web",
+            title="Web Source",
+            snippet="web finding",
+            relevance="high",
+            relevance_score=0.85,
+            url="https://example.com/a",
+        ),
+        EvidenceSource(
+            index=1,
+            kind="doc",
+            title="Doc Source",
+            snippet="doc finding",
+            relevance="medium",
+            relevance_score=0.5,
+            document_id="doc1",
+        ),
+    ]
 
 
-@pytest.fixture
-def base_state() -> OrchestratorState:
-    """Minimal valid orchestrator state."""
-    return OrchestratorState(
-        query="What is the viability of quantum computing for drug discovery?",
-        chunks=[
-            {
-                "document_id": "doc_001",
-                "title": "Quantum Computing Overview",
-                "content": "Quantum computing shows promise for molecular simulation.",
-                "relevance_score": 0.85,
-            }
-        ],
-        graph_signals=[],
-        research_evidence=[],
-        supporting_evidence=[],
-        contrarian_evidence=[],
-        challenged_assumptions=[],
-        risks=[],
-        technology_signals=[],
-        analysis_result=None,
-        agent_traces=[],
-        error=None,
-    )
+def _configure(class_mock: MagicMock, name: str, result: dict) -> None:
+    """Make ClassMock() return an instance whose .execute yields an AgentOutput."""
+    inst = class_mock.return_value
+    inst.name = name
+    inst.execute = AsyncMock(return_value={"agent_name": name, "result": result, "trace": None})
 
 
-@pytest.fixture
-def sample_evidence() -> Evidence:
-    return Evidence(
-        claim="Quantum computers can simulate molecules",
-        supporting_sources=[
-            SourceCitation(
-                document_id="doc_001",
-                title="QC Overview",
-                chunk_text="Quantum computing shows promise...",
-                relevance_score=0.85,
-            )
-        ],
-        confidence=0.8,
-    )
+_SUPPORT = {
+    "supporting_evidence": [
+        Evidence(
+            claim="Strong adoption signal",
+            supporting_sources=[
+                SourceCitation(
+                    document_id="",
+                    title="Web Source",
+                    chunk_text="web finding",
+                    relevance_score=0.85,
+                    url="https://example.com/a",
+                    kind="web",
+                )
+            ],
+            confidence=0.8,
+        )
+    ]
+}
+_SKEPTIC = {
+    "contrarian_evidence": [Evidence(claim="Scale-up risk", supporting_sources=[], confidence=0.6)],
+    "challenged_assumptions": ["Assumes pilot scales"],
+}
+_RISK = {"risks": []}
+_TREND = {"technology_signals": []}
 
 
-@pytest.fixture
-def sample_risk() -> RiskItem:
-    return RiskItem(
-        description="Quantum hardware is not yet scalable",
-        category=RiskCategory.TECHNICAL,
-        severity=Severity.HIGH,
-        likelihood=Likelihood.LIKELY,
-        mitigation="Partner with quantum cloud providers",
-    )
+def _configure_executive(m_exec: MagicMock) -> None:
+    """Mirror the real executive: build the result from the evidence it receives."""
 
-
-@pytest.fixture
-def sample_signal() -> TechnologySignal:
-    return TechnologySignal(
-        technology="Quantum Computing",
-        signal_type="research_momentum",
-        signal_strength=0.7,
-        trend_direction=TrendDirection.ACCELERATING,
-        commercialization_horizon_years=5.0,
-        supporting_data=["100+ papers in 2024"],
-    )
-
-
-# ---------------------------------------------------------------------------
-# Test: Graph construction
-# ---------------------------------------------------------------------------
-
-
-class TestBuildGraph:
-    """Test that build_graph constructs the correct node/edge structure."""
-
-    @pytest.mark.unit
-    def test_graph_has_three_nodes(self) -> None:
-        """The graph should have research, parallel_analysis, and executive nodes."""
-        graph = build_graph()
-        node_names = set(graph.nodes.keys())
-        assert "research" in node_names
-        assert "parallel_analysis" in node_names
-        assert "executive" in node_names
-
-    @pytest.mark.unit
-    def test_graph_entry_point_is_research(self) -> None:
-        """The entry point should be the research node."""
-        graph = build_graph()
-        # LangGraph stores entry point info; check via edges from __start__
-        edges = graph.edges
-        start_edges = [e for e in edges if e[0] == "__start__"]
-        assert len(start_edges) == 1
-        assert start_edges[0][1] == "research"
-
-    @pytest.mark.unit
-    def test_graph_edge_order(self) -> None:
-        """Edges should flow: research -> parallel_analysis -> executive -> END."""
-        graph = build_graph()
-        edges = graph.edges
-        edge_set = {(e[0], e[1]) for e in edges}
-        assert ("research", "parallel_analysis") in edge_set
-        assert ("parallel_analysis", "executive") in edge_set
-        assert ("executive", "__end__") in edge_set
-
-
-# ---------------------------------------------------------------------------
-# Test: Research node
-# ---------------------------------------------------------------------------
-
-
-class TestResearchNode:
-    """Test that the research node processes input correctly."""
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_research_node_produces_evidence(
-        self, base_state: OrchestratorState
-    ) -> None:
-        """Research node should produce research_evidence in state."""
-        mock_output = {
-            "agent_name": "research",
+    async def _execute(inputs):
+        ctx = inputs["context"]
+        return {
+            "agent_name": "executive",
             "result": {
-                "evidence": [
-                    Evidence(
-                        claim="QC shows promise",
-                        supporting_sources=[],
-                        confidence=0.8,
-                    )
-                ]
+                "analysis_result": AnalysisResult(
+                    query="q",
+                    recommendation="TRIAL",
+                    confidence_score=70,
+                    executive_summary="ok",
+                    supporting_evidence=ctx.get("supporting_evidence", []),
+                    contrarian_evidence=ctx.get("contrarian_evidence", []),
+                    risks=ctx.get("risks", []),
+                    technology_signals=ctx.get("technology_signals", []),
+                )
             },
-            "trace": AgentTrace(
-                agent_name="research",
-                started_at="2024-01-01T00:00:00",
-                finished_at="2024-01-01T00:00:01",
-                duration_ms=1000.0,
-            ),
+            "trace": None,
         }
 
-        with patch(
-            "app.agents.orchestrator.ResearchAgent"
-        ) as MockAgent:
-            instance = MockAgent.return_value
-            instance.execute = AsyncMock(return_value=mock_output)
-
-            new_state = await research_node(base_state)
-
-        assert len(new_state["research_evidence"]) == 1
-        assert len(new_state["agent_traces"]) == 1
-        assert new_state["agent_traces"][0].agent_name == "research"
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_research_node_handles_empty_chunks(self) -> None:
-        """Research node should handle empty chunks gracefully."""
-        state = OrchestratorState(
-            query="Test query for empty chunks",
-            chunks=[],
-            research_evidence=[],
-            agent_traces=[],
-        )
-
-        mock_output = {
-            "agent_name": "research",
-            "result": {"evidence": [], "note": "No source documents available"},
-            "trace": AgentTrace(
-                agent_name="research",
-                started_at="2024-01-01T00:00:00",
-                finished_at="2024-01-01T00:00:01",
-                duration_ms=500.0,
-            ),
-        }
-
-        with patch(
-            "app.agents.orchestrator.ResearchAgent"
-        ) as MockAgent:
-            instance = MockAgent.return_value
-            instance.execute = AsyncMock(return_value=mock_output)
-
-            new_state = await research_node(state)
-
-        assert new_state["research_evidence"] == []
+    m_exec.return_value.name = "executive"
+    m_exec.return_value.execute = AsyncMock(side_effect=_execute)
 
 
-# ---------------------------------------------------------------------------
-# Test: Parallel analysis handles agent failures
-# ---------------------------------------------------------------------------
+@patch("app.agents.orchestrator.ExecutiveAgent")
+@patch("app.agents.orchestrator.TrendAgent")
+@patch("app.agents.orchestrator.RiskAgent")
+@patch("app.agents.orchestrator.SkepticAgent")
+@patch("app.agents.orchestrator.SupportAgent")
+@patch("app.agents.orchestrator.retrieve_evidence", new_callable=AsyncMock)
+async def test_run_analysis_happy_path(
+    mock_retrieve, m_support, m_skeptic, m_risk, m_trend, m_exec
+) -> None:
+    from app.agents.orchestrator import run_analysis
+
+    mock_retrieve.return_value = _pool()
+    _configure(m_support, "support", _SUPPORT)
+    _configure(m_skeptic, "skeptic", _SKEPTIC)
+    _configure(m_risk, "risk", _RISK)
+    _configure(m_trend, "trend", _TREND)
+    _configure_executive(m_exec)
+
+    on_event = AsyncMock()
+    result, pool = await run_analysis("q", MagicMock(), on_event)
+
+    assert result.recommendation == "TRIAL"
+    assert result.confidence_score == 70
+    assert len(result.supporting_evidence) == 1
+    assert len(result.contrarian_evidence) == 1
+    assert len(pool) == 2
+    # research + 4 agents + executive all emit started/completed
+    emitted = [c.args[0] for c in on_event.await_args_list]
+    assert "agent_started" in emitted
+    assert "agent_completed" in emitted
 
 
-class TestParallelAnalysis:
-    """Test that parallel analysis handles agent failures gracefully."""
+@patch("app.agents.orchestrator.ExecutiveAgent")
+@patch("app.agents.orchestrator.TrendAgent")
+@patch("app.agents.orchestrator.RiskAgent")
+@patch("app.agents.orchestrator.SkepticAgent")
+@patch("app.agents.orchestrator.SupportAgent")
+@patch("app.agents.orchestrator.retrieve_evidence", new_callable=AsyncMock)
+async def test_run_analysis_executive_failure_falls_back(
+    mock_retrieve, m_support, m_skeptic, m_risk, m_trend, m_exec
+) -> None:
+    from app.agents.orchestrator import run_analysis
 
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_parallel_analysis_handles_single_failure(
-        self, base_state: OrchestratorState
-    ) -> None:
-        """If one agent fails, others should still produce results."""
-        base_state["research_evidence"] = [
-            {"claim": "Test claim", "confidence": 0.8}
-        ]
+    mock_retrieve.return_value = _pool()
+    _configure(m_support, "support", _SUPPORT)
+    _configure(m_skeptic, "skeptic", _SKEPTIC)
+    _configure(m_risk, "risk", _RISK)
+    _configure(m_trend, "trend", _TREND)
+    # Executive blows up -> orchestrator assembles a minimal fallback result.
+    m_exec.return_value.name = "executive"
+    m_exec.return_value.execute = AsyncMock(side_effect=RuntimeError("boom"))
 
-        success_trace = AgentTrace(
-            agent_name="support",
-            started_at="2024-01-01T00:00:00",
-            finished_at="2024-01-01T00:00:01",
-            duration_ms=1000.0,
-        )
-        success_output = {
-            "agent_name": "support",
-            "result": {"supporting_evidence": []},
-            "trace": success_trace,
-        }
+    result, _ = await run_analysis("q", MagicMock())
 
-        error = RuntimeError("Agent failed")
-
-        with (
-            patch("app.agents.orchestrator.SupportAgent") as MockSupport,
-            patch("app.agents.orchestrator.SkepticAgent") as MockSkeptic,
-            patch("app.agents.orchestrator.RiskAgent") as MockRisk,
-            patch("app.agents.orchestrator.TrendAgent") as MockTrend,
-        ):
-            MockSupport.return_value.execute = AsyncMock(return_value=success_output)
-            MockSkeptic.return_value.execute = AsyncMock(side_effect=error)
-            MockRisk.return_value.execute = AsyncMock(
-                return_value={
-                    "agent_name": "risk",
-                    "result": {"risks": []},
-                    "trace": AgentTrace(
-                        agent_name="risk",
-                        started_at="",
-                        finished_at="",
-                        duration_ms=0,
-                    ),
-                }
-            )
-            MockTrend.return_value.execute = AsyncMock(
-                return_value={
-                    "agent_name": "trend",
-                    "result": {"technology_signals": []},
-                    "trace": AgentTrace(
-                        agent_name="trend",
-                        started_at="",
-                        finished_at="",
-                        duration_ms=0,
-                    ),
-                }
-            )
-
-            new_state = await parallel_analysis_node(base_state)
-
-        # Should have traces for all agents (including error trace for skeptic)
-        assert len(new_state["agent_traces"]) >= 3
-        error_traces = [
-            t for t in new_state["agent_traces"] if t.error is not None
-        ]
-        assert len(error_traces) >= 1
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_parallel_analysis_all_succeed(
-        self,
-        base_state: OrchestratorState,
-        sample_evidence: Evidence,
-        sample_risk: RiskItem,
-        sample_signal: TechnologySignal,
-    ) -> None:
-        """When all agents succeed, all result fields should be populated."""
-        base_state["research_evidence"] = [
-            {"claim": "Test", "confidence": 0.8}
-        ]
-
-        def make_output(name: str, result: dict[str, object]) -> dict[str, object]:
-            return {
-                "agent_name": name,
-                "result": result,
-                "trace": AgentTrace(
-                    agent_name=name,
-                    started_at="2024-01-01T00:00:00",
-                    finished_at="2024-01-01T00:00:01",
-                    duration_ms=1000.0,
-                ),
-            }
-
-        with (
-            patch("app.agents.orchestrator.SupportAgent") as MockSupport,
-            patch("app.agents.orchestrator.SkepticAgent") as MockSkeptic,
-            patch("app.agents.orchestrator.RiskAgent") as MockRisk,
-            patch("app.agents.orchestrator.TrendAgent") as MockTrend,
-        ):
-            MockSupport.return_value.execute = AsyncMock(
-                return_value=make_output(
-                    "support", {"supporting_evidence": [sample_evidence]}
-                )
-            )
-            MockSkeptic.return_value.execute = AsyncMock(
-                return_value=make_output(
-                    "skeptic",
-                    {
-                        "contrarian_evidence": [sample_evidence],
-                        "challenged_assumptions": ["Assumption 1"],
-                    },
-                )
-            )
-            MockRisk.return_value.execute = AsyncMock(
-                return_value=make_output("risk", {"risks": [sample_risk]})
-            )
-            MockTrend.return_value.execute = AsyncMock(
-                return_value=make_output(
-                    "trend", {"technology_signals": [sample_signal]}
-                )
-            )
-
-            new_state = await parallel_analysis_node(base_state)
-
-        assert len(new_state["supporting_evidence"]) == 1
-        assert len(new_state["contrarian_evidence"]) == 1
-        assert len(new_state["challenged_assumptions"]) == 1
-        assert len(new_state["risks"]) == 1
-        assert len(new_state["technology_signals"]) == 1
+    assert result.recommendation == "ASSESS"
+    assert result.confidence_score == 0
+    # Grounded evidence the agents gathered is still surfaced.
+    assert len(result.supporting_evidence) == 1
+    assert len(result.contrarian_evidence) == 1
 
 
-# ---------------------------------------------------------------------------
-# Test: Executive node produces valid AnalysisResult
-# ---------------------------------------------------------------------------
+@patch("app.agents.orchestrator.ExecutiveAgent")
+@patch("app.agents.orchestrator.TrendAgent")
+@patch("app.agents.orchestrator.RiskAgent")
+@patch("app.agents.orchestrator.SkepticAgent")
+@patch("app.agents.orchestrator.SupportAgent")
+@patch("app.agents.orchestrator.retrieve_evidence", new_callable=AsyncMock)
+async def test_run_analysis_agent_failure_degrades(
+    mock_retrieve, m_support, m_skeptic, m_risk, m_trend, m_exec
+) -> None:
+    from app.agents.orchestrator import run_analysis
 
+    mock_retrieve.return_value = _pool()
+    # Support agent fails -> empty supporting evidence, pipeline still completes.
+    m_support.return_value.name = "support"
+    m_support.return_value.execute = AsyncMock(side_effect=RuntimeError("boom"))
+    _configure(m_skeptic, "skeptic", _SKEPTIC)
+    _configure(m_risk, "risk", _RISK)
+    _configure(m_trend, "trend", _TREND)
+    _configure_executive(m_exec)
 
-class TestExecutiveNode:
-    """Test that the executive node produces a valid AnalysisResult."""
+    result, _ = await run_analysis("q", MagicMock())
 
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_executive_produces_analysis_result(
-        self,
-        base_state: OrchestratorState,
-        sample_evidence: Evidence,
-        sample_risk: RiskItem,
-        sample_signal: TechnologySignal,
-    ) -> None:
-        """Executive node should produce a fully populated AnalysisResult."""
-        base_state["supporting_evidence"] = [sample_evidence]
-        base_state["contrarian_evidence"] = [sample_evidence]
-        base_state["challenged_assumptions"] = ["Assumption 1"]
-        base_state["risks"] = [sample_risk]
-        base_state["technology_signals"] = [sample_signal]
-
-        analysis_result = AnalysisResult(
-            query=base_state["query"],
-            recommendation="ASSESS",
-            confidence_score=65,
-            executive_summary="Test summary",
-            supporting_evidence=[sample_evidence],
-            contrarian_evidence=[sample_evidence],
-            risks=[sample_risk],
-            key_assumptions=["Assumption 1"],
-            technology_signals=[sample_signal],
-        )
-
-        mock_output = {
-            "agent_name": "executive",
-            "result": {"analysis_result": analysis_result},
-            "trace": AgentTrace(
-                agent_name="executive",
-                started_at="2024-01-01T00:00:00",
-                finished_at="2024-01-01T00:00:05",
-                duration_ms=5000.0,
-            ),
-        }
-
-        with patch(
-            "app.agents.orchestrator.ExecutiveAgent"
-        ) as MockExec:
-            MockExec.return_value.execute = AsyncMock(return_value=mock_output)
-
-            new_state = await executive_node(base_state)
-
-        result = new_state["analysis_result"]
-        assert result is not None
-        assert result.recommendation == "ASSESS"
-        assert result.confidence_score == 65
-        assert result.executive_summary == "Test summary"
-        assert len(result.agent_traces) >= 1
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_executive_handles_none_result(
-        self, base_state: OrchestratorState
-    ) -> None:
-        """Executive node should handle None analysis_result gracefully."""
-        mock_output = {
-            "agent_name": "executive",
-            "result": {"analysis_result": None},
-            "trace": AgentTrace(
-                agent_name="executive",
-                started_at="2024-01-01T00:00:00",
-                finished_at="2024-01-01T00:00:01",
-                duration_ms=1000.0,
-            ),
-        }
-
-        with patch(
-            "app.agents.orchestrator.ExecutiveAgent"
-        ) as MockExec:
-            MockExec.return_value.execute = AsyncMock(return_value=mock_output)
-
-            new_state = await executive_node(base_state)
-
-        assert new_state["analysis_result"] is None
+    assert result.recommendation == "TRIAL"
+    assert result.supporting_evidence == []
+    assert len(result.contrarian_evidence) == 1

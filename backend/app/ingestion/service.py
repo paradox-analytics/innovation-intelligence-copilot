@@ -65,7 +65,7 @@ async def _ingest_text(
     await db.execute(
         text("""
             INSERT INTO documents (id, title, content, doc_type, metadata, created_at, updated_at)
-            VALUES (:id, :title, :content, 'PDF', :metadata::jsonb, NOW(), NOW())
+            VALUES (:id, :title, :content, 'PDF', CAST(:metadata AS jsonb), NOW(), NOW())
         """),
         {
             "id": document_id,
@@ -76,11 +76,11 @@ async def _ingest_text(
     )
 
     # 4. Store chunks with embeddings
-    for chunk, embedding in zip(chunks, embeddings):
+    for chunk, embedding in zip(chunks, embeddings, strict=False):
         await db.execute(
             text("""
                 INSERT INTO document_chunks (id, document_id, content, embedding, chunk_index, metadata)
-                VALUES (:id, :document_id, :content, :embedding::vector, :chunk_index, :metadata::jsonb)
+                VALUES (:id, :document_id, :content, CAST(:embedding AS vector), :chunk_index, CAST(:metadata AS jsonb))
             """),
             {
                 "id": chunk.id,
@@ -98,9 +98,7 @@ async def _ingest_text(
     # 5. Extract entities for knowledge graph (best-effort, non-fatal)
     try:
         extraction_text = content[:8000]
-        entities, relationships = await extract_entities(
-            extraction_text, document_id=document_id
-        )
+        entities, relationships = await extract_entities(extraction_text, document_id=document_id)
 
         graph_service = KnowledgeGraphService(neo4j_client)
         for entity in entities:
@@ -115,8 +113,6 @@ async def _ingest_text(
             len(relationships),
         )
     except Exception:
-        logger.exception(
-            "Document %s: entity extraction failed (non-fatal)", document_id
-        )
+        logger.exception("Document %s: entity extraction failed (non-fatal)", document_id)
 
     return document_id

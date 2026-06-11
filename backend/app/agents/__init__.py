@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .base import BaseAgent
 from .executive_agent import ExecutiveAgent
-from .orchestrator import build_graph, run_analysis
+from .orchestrator import run_analysis
 from .research_agent import ResearchAgent
 from .risk_agent import RiskAgent
 from .skeptic_agent import SkepticAgent
@@ -17,6 +17,5 @@ __all__ = [
     "SkepticAgent",
     "SupportAgent",
     "TrendAgent",
-    "build_graph",
     "run_analysis",
 ]

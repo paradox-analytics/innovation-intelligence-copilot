@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from collections.abc import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -15,9 +14,7 @@ logger = logging.getLogger("app.middleware")
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Attach a unique X-Request-ID header to every request/response."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
         # Store on request state so downstream code can access it
         request.state.request_id = request_id
@@ -30,9 +27,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 class TimingMiddleware(BaseHTTPMiddleware):
     """Add X-Process-Time header with the request duration in milliseconds."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start = time.perf_counter()
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start) * 1000
@@ -43,9 +38,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
 class StructuredLoggingMiddleware(BaseHTTPMiddleware):
     """Log each request with method, path, status code, and duration."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start = time.perf_counter()
         response: Response | None = None
         try:

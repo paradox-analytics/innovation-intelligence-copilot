@@ -97,6 +97,7 @@ function extractEvidenceItems(
     sourceUrl: item.source_url ? String(item.source_url) : undefined,
     relevance: (item.relevance as "high" | "medium" | "low") ?? "medium",
     type,
+    kind: item.kind === "web" || item.kind === "doc" ? item.kind : undefined,
   }));
 }
 
@@ -161,6 +162,38 @@ function extractSignals(items: unknown): SignalCardData[] {
     description: String(item.description ?? ""),
     readinessLevel: Number(item.readinessLevel ?? item.readiness_level ?? 5),
   }));
+}
+
+function EvidenceSourceTag({ item }: { item: EvidenceItem }) {
+  if (!item.source || item.source === "Unknown") return null;
+  return (
+    <span className="ml-1.5 inline-flex items-center gap-1 align-middle text-xs text-text-tertiary">
+      {item.kind && (
+        <span
+          className={cn(
+            "rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+            item.kind === "web"
+              ? "bg-accent-blue/15 text-accent-blue"
+              : "bg-accent-emerald/15 text-accent-emerald"
+          )}
+        >
+          {item.kind}
+        </span>
+      )}
+      {item.sourceUrl ? (
+        <a
+          href={item.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-dotted underline-offset-2 hover:text-accent-blue"
+        >
+          {item.source}
+        </a>
+      ) : (
+        <span>— {item.source}</span>
+      )}
+    </span>
+  );
 }
 
 // --- Page component ---
@@ -312,6 +345,10 @@ function AnalyzePageContent() {
   const risks = structuredRisks.map((r) => r.description);
   const assumptions = extractStrings(analysisResult?.key_assumptions);
   const signals = extractSignals(analysisResult?.technology_signals);
+  const isGrounded = analysisResult ? analysisResult.grounded !== false : true;
+  const sourceSummary = (analysisResult?.source_summary ?? null) as
+    | { web?: number; documents?: number; total?: number }
+    | null;
 
   // Build a full report text from sections
   const fullReportText = [
@@ -1000,6 +1037,28 @@ function AnalyzePageContent() {
                           </div>
                         )}
 
+                        {/* Grounding banner */}
+                        {!isGrounded ? (
+                          <div className="border-b border-border-primary px-8 py-3">
+                            <div className="rounded-lg border border-accent-amber/30 bg-accent-amber/10 px-4 py-2 text-xs text-accent-amber">
+                              Ungrounded analysis — no web or document sources matched this query.
+                              Claims reflect the model&apos;s general knowledge and are not cited.
+                            </div>
+                          </div>
+                        ) : sourceSummary && sourceSummary.total ? (
+                          <div className="border-b border-border-primary px-8 py-3">
+                            <p className="text-xs text-text-tertiary">
+                              Grounded in{" "}
+                              <span className="font-medium text-text-secondary">
+                                {sourceSummary.total} source{sourceSummary.total === 1 ? "" : "s"}
+                              </span>
+                              {" — "}
+                              {sourceSummary.web ?? 0} web · {sourceSummary.documents ?? 0} document
+                              {(sourceSummary.documents ?? 0) === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                        ) : null}
+
                         {/* Recommendation */}
                         {recommendation && (
                           <div className="border-b border-border-primary px-8 py-6">
@@ -1049,9 +1108,7 @@ function AnalyzePageContent() {
                               {supportingEvidence.map((e, i) => (
                                 <li key={i} className="text-sm leading-relaxed text-text-secondary pl-1">
                                   {e.claim}
-                                  {e.source && e.source !== "Unknown" && (
-                                    <span className="ml-1 text-xs text-text-tertiary">— {e.source}</span>
-                                  )}
+                                  <EvidenceSourceTag item={e} />
                                 </li>
                               ))}
                             </ol>
@@ -1068,6 +1125,7 @@ function AnalyzePageContent() {
                               {contrarianEvidence.map((e, i) => (
                                 <li key={i} className="text-sm leading-relaxed text-text-secondary pl-1">
                                   {e.claim}
+                                  <EvidenceSourceTag item={e} />
                                 </li>
                               ))}
                             </ol>

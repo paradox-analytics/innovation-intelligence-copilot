@@ -53,9 +53,7 @@ class ConversationMemory:
 
     async def _get_client(self) -> redis.Redis:
         if self._client is None:
-            self._client = redis.from_url(
-                self._redis_url, decode_responses=True
-            )
+            self._client = redis.from_url(self._redis_url, decode_responses=True)
         return self._client
 
     def _topic_key(self, topic: str) -> str:

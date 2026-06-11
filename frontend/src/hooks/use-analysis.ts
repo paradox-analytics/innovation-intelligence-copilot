@@ -202,8 +202,8 @@ export function useAnalysis(): UseAnalysisReturn {
         const response = await apiClient.submitAnalysis(request);
         const analysisId = response.analysis_id;
 
-        // Use polling to track progress (SSE requires orchestrator integration)
-        pollForResult(analysisId);
+        // Stream real-time agent progress via SSE; falls back to polling on error.
+        startStreaming(analysisId);
       } catch (err) {
         setStatus("error");
         setError(

@@ -7,12 +7,12 @@ import hmac
 import json
 import logging
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,7 +75,7 @@ async def create_webhook(
         events=body.events,
         secret=secrets.token_urlsafe(32),
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(webhook)
     await db.flush()
@@ -131,9 +131,7 @@ async def delete_webhook(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Remove a registered webhook."""
-    result = await db.execute(
-        select(Webhook).where(Webhook.id == webhook_id)
-    )
+    result = await db.execute(select(Webhook).where(Webhook.id == webhook_id))
     webhook = result.scalar_one_or_none()
     if webhook is None:
         raise HTTPException(
@@ -186,7 +184,7 @@ async def fire_webhook(
         body_str = json.dumps(
             {
                 "event": event_type,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "data": payload,
             },
             default=str,

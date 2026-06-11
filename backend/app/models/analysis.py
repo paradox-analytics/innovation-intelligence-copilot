@@ -40,9 +40,7 @@ class AnalysisRequest(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     traces: Mapped[list[AgentTrace]] = relationship(
         "AgentTrace", back_populates="analysis_request", cascade="all, delete-orphan"
@@ -65,9 +63,7 @@ class AgentTrace(Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     analysis_request: Mapped[AnalysisRequest] = relationship(
         "AnalysisRequest", back_populates="traces"

@@ -137,7 +137,7 @@ class CitationTracker:
             )
             # Include a short excerpt
             excerpt = cit.chunk_text[:200].replace("\n", " ")
-            lines.append(f"    \"{excerpt}...\"")
+            lines.append(f'    "{excerpt}..."')
             lines.append("")
 
         return "\n".join(lines)

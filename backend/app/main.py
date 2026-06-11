@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
-from uuid import uuid4
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, suppress
+from datetime import UTC
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,7 +64,8 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
 
         async with async_session_factory() as db:
             from sqlalchemy import text as sql_text
-            for chunk, embedding in zip(chunks, embeddings):
+
+            for chunk, embedding in zip(chunks, embeddings, strict=False):
                 embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
                 await db.execute(
                     sql_text(
@@ -90,16 +92,23 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
             )
 
             # Map extracted entity types to the DB enum
-            valid_types = {"TECHNOLOGY", "COMPANY", "STARTUP", "MARKET", "PATENT", "RESEARCH_TOPIC"}
             type_map: dict[str, str] = {
-                "technology": "TECHNOLOGY", "company": "COMPANY", "startup": "STARTUP",
-                "market": "MARKET", "patent": "PATENT", "research_topic": "RESEARCH_TOPIC",
-                "research_org": "COMPANY", "person": "COMPANY", "standard": "TECHNOLOGY",
-                "regulation": "TECHNOLOGY", "product": "TECHNOLOGY",
+                "technology": "TECHNOLOGY",
+                "company": "COMPANY",
+                "startup": "STARTUP",
+                "market": "MARKET",
+                "patent": "PATENT",
+                "research_topic": "RESEARCH_TOPIC",
+                "research_org": "COMPANY",
+                "person": "COMPANY",
+                "standard": "TECHNOLOGY",
+                "regulation": "TECHNOLOGY",
+                "product": "TECHNOLOGY",
             }
 
             async with async_session_factory() as db2:
                 from sqlalchemy import text as sql_text
+
                 for entity in entities:
                     etype = type_map.get(entity.entity_type.lower(), "TECHNOLOGY")
                     await db2.execute(
@@ -144,25 +153,39 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
 
             logger.info(
                 "ingestion_entities document_id=%s entities=%d relationships=%d",
-                document_id, len(entities), len(relationships),
+                document_id,
+                len(entities),
+                len(relationships),
             )
         except Exception:
             logger.exception("ingestion_entity_extraction_failed document_id=%s", document_id)
 
         return {"status": "completed", "document_id": document_id, "chunks": len(chunks)}
 
-    except Exception as exc:
+    except Exception:
         logger.exception("ingestion_failed document_id=%s", document_id)
         raise
 
 
+# Overall wall-clock cap for the grounded pipeline. If exceeded, we fall back
+# to the ungrounded single-call analysis so a task can never hang forever.
+_ANALYSIS_TIMEOUT_SECONDS = 220
+
+
 async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]:
-    """Run the multi-agent analysis pipeline and persist results."""
-    from datetime import datetime, timezone
+    """Run the grounded multi-agent analysis pipeline and persist results."""
+    import asyncio
+    from datetime import datetime
 
     from sqlalchemy import select
 
     from app.agents.orchestrator import run_analysis
+    from app.agents.serialize import serialize_analysis
+    from app.api.v1.endpoints.streaming import (
+        emit_analysis_complete,
+        emit_analysis_error,
+        emit_event,
+    )
     from app.core.database import async_session_factory
     from app.models.analysis import AnalysisRequest, AnalysisStatus
 
@@ -171,11 +194,12 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
 
     logger.info("analysis_started analysis_id=%s query=%s", analysis_id, query[:80])
 
+    async def on_event(event_type: str, data: dict[str, object]) -> None:
+        with suppress(Exception):  # streaming is best-effort
+            await emit_event(analysis_id, event_type, data)
+
     async with async_session_factory() as db:
-        # Mark as processing
-        result = await db.execute(
-            select(AnalysisRequest).where(AnalysisRequest.id == analysis_id)
-        )
+        result = await db.execute(select(AnalysisRequest).where(AnalysisRequest.id == analysis_id))
         analysis = result.scalar_one_or_none()
         if analysis is None:
             logger.error("analysis_not_found analysis_id=%s", analysis_id)
@@ -185,23 +209,50 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
         await db.commit()
 
         try:
-            # Use direct Claude analysis (single call, reliable in production)
-            result_dict, confidence = await _direct_analysis(query)
+            try:
+                analysis_result, pool = await asyncio.wait_for(
+                    run_analysis(query, db, on_event),
+                    timeout=_ANALYSIS_TIMEOUT_SECONDS,
+                )
+                if pool:
+                    result_dict = serialize_analysis(analysis_result, pool, grounded=True)
+                    confidence = float(analysis_result.confidence_score)
+                else:
+                    # No web or document sources matched — fall back to an
+                    # ungrounded analysis, clearly labelled.
+                    logger.info("analysis_no_sources analysis_id=%s", analysis_id)
+                    result_dict, confidence = await _direct_analysis(query)
+                    result_dict["grounded"] = False
+            except Exception:
+                logger.exception(
+                    "grounded analysis failed analysis_id=%s; using ungrounded fallback",
+                    analysis_id,
+                )
+                result_dict, confidence = await _direct_analysis(query)
+                result_dict["grounded"] = False
 
             analysis.status = AnalysisStatus.COMPLETED
             analysis.confidence_score = confidence
             analysis.result = result_dict
-            analysis.completed_at = datetime.now(timezone.utc)
+            analysis.completed_at = datetime.now(UTC)
             await db.commit()
 
-            logger.info("analysis_completed analysis_id=%s confidence=%.1f", analysis_id, confidence)
+            await on_event("agent_completed", {"agent": "executive"})
+            await emit_analysis_complete(analysis_id, result_dict)
+            logger.info(
+                "analysis_completed analysis_id=%s grounded=%s confidence=%.1f",
+                analysis_id,
+                result_dict.get("grounded", True),
+                confidence,
+            )
             return {"status": "completed", "analysis_id": analysis_id}
 
         except Exception as exc:
             analysis.status = AnalysisStatus.FAILED
             analysis.result = {"error": str(exc)}
-            analysis.completed_at = datetime.now(timezone.utc)
+            analysis.completed_at = datetime.now(UTC)
             await db.commit()
+            await emit_analysis_error(analysis_id, str(exc))
             logger.exception("analysis_failed analysis_id=%s", analysis_id)
             raise
 
@@ -209,29 +260,36 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
 async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
     """Fallback: single Claude call that produces the full analysis."""
     import anthropic
+
     from app.core.config import settings
 
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     response = await client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5",
         max_tokens=8192,
         system=(
             "You are a strategic technology analyst. Analyze the question and return a JSON object with:\n"
             '{"recommendation": "your recommendation text",'
             '"confidence_score": 0-100,'
             '"executive_summary": "2-3 paragraph summary",'
-            '"supporting_evidence": [{"claim": "...", "confidence": 0.0-1.0, "supporting_sources": []}],'
-            '"contrarian_evidence": [{"claim": "...", "confidence": 0.0-1.0, "supporting_sources": []}],'
+            '"supporting_evidence": [{"claim": "...", "source": "the report, filing, or dataset this draws on", "relevance": "high|medium|low", "confidence": 0.0-1.0}],'
+            '"contrarian_evidence": [{"claim": "...", "source": "the report, filing, or dataset this draws on", "relevance": "high|medium|low", "confidence": 0.0-1.0}],'
             '"risks": [{"description": "...", "category": "strategic|technical|market|regulatory", "severity": "low|medium|high|critical", "likelihood": "unlikely|possible|likely|almost_certain", "mitigation": "..."}],'
             '"key_assumptions": ["assumption 1", ...],'
-            '"technology_signals": []}\n'
+            '"technology_signals": [{"name": "the specific technology or trend", "category": "short human-readable category", "signal_strength": 0-100, "trend": "up|down|stable", "horizon": "near|mid|far", "readiness_level": 1-9, "description": "..."}]}\n'
+            "Provide 3-5 supporting and 3-5 contrarian evidence items, and 3-6 distinct technology_signals. "
+            "Each signal must have its own signal_strength (0-100), readiness_level (1-9 TRL), trend, and horizon that genuinely reflect that signal — do NOT reuse the same values across signals. "
+            "For every evidence item, name a concrete source and set relevance based on how directly it supports the claim. "
             "Return ONLY valid JSON, no markdown fences."
         ),
         messages=[{"role": "user", "content": f"Strategic question: {query}"}],
     )
 
-    raw = response.content[0].text.strip()
+    from anthropic.types import TextBlock
+
+    _block = response.content[0]
+    raw = (_block.text if isinstance(_block, TextBlock) else "").strip()
     if raw.startswith("```"):
         lines = raw.split("\n")
         lines = lines[1:]
@@ -240,13 +298,14 @@ async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
         raw = "\n".join(lines).strip()
 
     import json as json_mod
+
     try:
         result = json_mod.loads(raw)
     except json_mod.JSONDecodeError:
         start = raw.find("{")
         end = raw.rfind("}")
         if start >= 0 and end > start:
-            result = json_mod.loads(raw[start:end + 1])
+            result = json_mod.loads(raw[start : end + 1])
         else:
             result = {"recommendation": raw, "confidence_score": 50, "executive_summary": raw}
 
@@ -257,7 +316,7 @@ async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage startup and shutdown of database connections and workers."""
-    global _worker_task  # noqa: PLW0603
+    global _worker_task
 
     # Validate environment configuration
     validate_environment()
@@ -288,10 +347,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await task_queue.stop_worker()
     if _worker_task is not None:
         _worker_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await _worker_task
-        except asyncio.CancelledError:
-            pass
     await task_queue.close()
 
     logger.info("Closing database connections...")
@@ -326,7 +383,8 @@ app.add_middleware(TimingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 _cors_origins = (
-    ["*"] if settings.CORS_ORIGINS.strip() == "*"
+    ["*"]
+    if settings.CORS_ORIGINS.strip() == "*"
     else [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 )
 

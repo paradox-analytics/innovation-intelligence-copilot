@@ -1,15 +1,29 @@
+"""Plain-async analysis orchestrator (no LangGraph).
+
+Flow: retrieve evidence (web + docs) -> run support/skeptic/risk/trend
+concurrently against the shared evidence pool -> executive synthesis.
+
+Replaces the previous LangGraph StateGraph, which was the likely cause of the
+production hang. Real source citations are threaded from retrieval all the way
+through to the final AnalysisResult.
+"""
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import asdict
-from typing import TypedDict
+from collections.abc import Awaitable, Callable
 
-from langgraph.graph import END, StateGraph
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.retrieval import (
+    EvidenceSource,
+    format_pool_for_prompt,
+    retrieve_evidence,
+)
+from app.core.config import settings
 from app.models import (
     AgentInput,
-    AgentTrace,
     AnalysisResult,
     Evidence,
     RiskItem,
@@ -17,7 +31,6 @@ from app.models import (
 )
 
 from .executive_agent import ExecutiveAgent
-from .research_agent import ResearchAgent
 from .risk_agent import RiskAgent
 from .skeptic_agent import SkepticAgent
 from .support_agent import SupportAgent
@@ -27,199 +40,97 @@ logger = logging.getLogger(__name__)
 
 _AGENT_TIMEOUT_SECONDS = 120
 
-
-class OrchestratorState(TypedDict, total=False):
-    query: str
-    chunks: list[dict[str, object]]
-    graph_signals: list[dict[str, object]]
-    research_evidence: list[dict[str, object]]
-    supporting_evidence: list[Evidence]
-    contrarian_evidence: list[Evidence]
-    challenged_assumptions: list[str]
-    risks: list[RiskItem]
-    technology_signals: list[TechnologySignal]
-    analysis_result: AnalysisResult | None
-    agent_traces: list[AgentTrace]
-    error: str | None
+# (event_type, data) -> awaitable. Default no-op so the orchestrator runs
+# headless when no streaming consumer is attached.
+EventHook = Callable[[str, dict[str, object]], Awaitable[None]]
 
 
-async def _run_with_timeout(coro, timeout: int) -> dict[str, object]:
-    return await asyncio.wait_for(coro, timeout=timeout)
+async def _noop(_event: str, _data: dict[str, object]) -> None:
+    return None
 
 
-async def research_node(state: OrchestratorState) -> OrchestratorState:
-    agent = ResearchAgent()
-    input_data = AgentInput(
-        query=state["query"],
-        context={"chunks": state.get("chunks", [])},
-    )
-    output = await _run_with_timeout(
-        agent.execute(input_data),
-        _AGENT_TIMEOUT_SECONDS,
-    )
-
-    evidence_raw = output["result"].get("evidence", [])
-    # Convert Evidence dataclasses to dicts for downstream agents that receive them
-    # as serialized context
-    evidence_dicts: list[dict[str, object]] = [
-        asdict(e) if isinstance(e, Evidence) else e for e in evidence_raw
-    ]
-
-    traces = list(state.get("agent_traces", []))
-    traces.append(output["trace"])
-
-    return {
-        **state,
-        "research_evidence": evidence_dicts,
-        "agent_traces": traces,
-    }
-
-
-async def _parallel_analysis(state: OrchestratorState) -> OrchestratorState:
-    """Runs support, skeptic, risk, and trend agents concurrently."""
-    support = SupportAgent()
-    skeptic = SkepticAgent()
-    risk = RiskAgent()
-    trend = TrendAgent()
-
-    base_context: dict[str, object] = {
-        "research_evidence": state.get("research_evidence", []),
-        "graph_signals": state.get("graph_signals", []),
-    }
-
-    inputs = AgentInput(query=state["query"], context=base_context)
-    timeout = _AGENT_TIMEOUT_SECONDS
-
-    results = await asyncio.gather(
-        _run_with_timeout(support.execute(inputs), timeout),
-        _run_with_timeout(skeptic.execute(inputs), timeout),
-        _run_with_timeout(risk.execute(inputs), timeout),
-        _run_with_timeout(trend.execute(inputs), timeout),
-        return_exceptions=True,
-    )
-
-    traces = list(state.get("agent_traces", []))
-    supporting: list[Evidence] = []
-    contrarian: list[Evidence] = []
-    challenged: list[str] = []
-    risks: list[RiskItem] = []
-    signals: list[TechnologySignal] = []
-
-    for i, result in enumerate(results):
-        agent_name = ["support", "skeptic", "risk", "trend"][i]
-        if isinstance(result, BaseException):
-            logger.error("Agent %s failed: %s", agent_name, result)
-            traces.append(
-                AgentTrace(
-                    agent_name=agent_name,
-                    started_at="",
-                    finished_at="",
-                    duration_ms=0,
-                    error=str(result),
-                )
-            )
-            continue
-
-        traces.append(result["trace"])
-
-        if agent_name == "support":
-            supporting = result["result"].get("supporting_evidence", [])
-        elif agent_name == "skeptic":
-            contrarian = result["result"].get("contrarian_evidence", [])
-            challenged = result["result"].get("challenged_assumptions", [])
-        elif agent_name == "risk":
-            risks = result["result"].get("risks", [])
-        elif agent_name == "trend":
-            signals = result["result"].get("technology_signals", [])
-
-    return {
-        **state,
-        "supporting_evidence": supporting,
-        "contrarian_evidence": contrarian,
-        "challenged_assumptions": challenged,
-        "risks": risks,
-        "technology_signals": signals,
-        "agent_traces": traces,
-    }
-
-
-async def parallel_analysis_node(state: OrchestratorState) -> OrchestratorState:
-    return await _parallel_analysis(state)
-
-
-async def executive_node(state: OrchestratorState) -> OrchestratorState:
-    agent = ExecutiveAgent()
-    input_data = AgentInput(
-        query=state["query"],
-        context={
-            "supporting_evidence": state.get("supporting_evidence", []),
-            "contrarian_evidence": state.get("contrarian_evidence", []),
-            "challenged_assumptions": state.get("challenged_assumptions", []),
-            "risks": state.get("risks", []),
-            "technology_signals": state.get("technology_signals", []),
-        },
-    )
-    output = await _run_with_timeout(
-        agent.execute(input_data),
-        _AGENT_TIMEOUT_SECONDS,
-    )
-
-    traces = list(state.get("agent_traces", []))
-    traces.append(output["trace"])
-
-    analysis: AnalysisResult | None = output["result"].get("analysis_result")  # type: ignore[assignment]
-    if analysis is not None:
-        analysis.agent_traces = traces
-
-    return {
-        **state,
-        "analysis_result": analysis,
-        "agent_traces": traces,
-    }
-
-
-def build_graph() -> StateGraph:
-    graph = StateGraph(OrchestratorState)
-
-    graph.add_node("research", research_node)
-    graph.add_node("parallel_analysis", parallel_analysis_node)
-    graph.add_node("executive", executive_node)
-
-    graph.set_entry_point("research")
-    graph.add_edge("research", "parallel_analysis")
-    graph.add_edge("parallel_analysis", "executive")
-    graph.add_edge("executive", END)
-
-    return graph
+async def _run_agent(agent, inputs: AgentInput, on_event: EventHook):  # type: ignore[no-untyped-def]
+    await on_event("agent_started", {"agent": agent.name})
+    try:
+        output = await asyncio.wait_for(agent.execute(inputs), timeout=_AGENT_TIMEOUT_SECONDS)
+    except Exception as exc:
+        logger.warning("agent %s failed: %s", agent.name, exc)
+        await on_event("agent_completed", {"agent": agent.name})
+        return agent.name, {}
+    await on_event("agent_completed", {"agent": agent.name})
+    return agent.name, output["result"]
 
 
 async def run_analysis(
     query: str,
-    chunks: list[dict[str, object]] | None = None,
-    graph_signals: list[dict[str, object]] | None = None,
-) -> AnalysisResult:
-    graph = build_graph()
-    app = graph.compile()
+    db: AsyncSession,
+    on_event: EventHook | None = None,
+) -> tuple[AnalysisResult, list[EvidenceSource]]:
+    """Run the grounded multi-agent analysis. Returns the result + evidence pool."""
+    emit = on_event or _noop
 
-    initial_state: OrchestratorState = {
-        "query": query,
-        "chunks": chunks or [],
-        "graph_signals": graph_signals or [],
-        "research_evidence": [],
-        "supporting_evidence": [],
-        "contrarian_evidence": [],
-        "challenged_assumptions": [],
-        "risks": [],
-        "technology_signals": [],
-        "analysis_result": None,
-        "agent_traces": [],
-        "error": None,
-    }
+    # 1. Retrieve evidence from web + documents (single shared pool).
+    await emit("agent_started", {"agent": "research"})
+    pool = await retrieve_evidence(query, db)
+    await emit(
+        "agent_completed",
+        {"agent": "research", "partial_result": {"source_count": len(pool)}},
+    )
 
-    final_state = await app.ainvoke(initial_state)
-    result: AnalysisResult | None = final_state.get("analysis_result")
+    pool_text = format_pool_for_prompt(pool)
+    context: dict[str, object] = {"evidence_pool": pool_text, "pool": pool}
+    inputs = AgentInput(query=query, context=context)
+
+    # 2. Run the four analytical agents concurrently against the shared pool.
+    names_results = await asyncio.gather(
+        _run_agent(SupportAgent(), inputs, emit),
+        _run_agent(SkepticAgent(), inputs, emit),
+        _run_agent(RiskAgent(), inputs, emit),
+        _run_agent(TrendAgent(), inputs, emit),
+    )
+    by_agent = dict(names_results)
+
+    supporting: list[Evidence] = by_agent.get("support", {}).get("supporting_evidence", [])
+    contrarian: list[Evidence] = by_agent.get("skeptic", {}).get("contrarian_evidence", [])
+    challenged: list[str] = by_agent.get("skeptic", {}).get("challenged_assumptions", [])
+    risks: list[RiskItem] = by_agent.get("risk", {}).get("risks", [])
+    signals: list[TechnologySignal] = by_agent.get("trend", {}).get("technology_signals", [])
+
+    # 3. Executive synthesis.
+    await emit("agent_started", {"agent": "executive"})
+    exec_inputs = AgentInput(
+        query=query,
+        context={
+            "supporting_evidence": supporting,
+            "contrarian_evidence": contrarian,
+            "challenged_assumptions": challenged,
+            "risks": risks,
+            "technology_signals": signals,
+        },
+    )
+    try:
+        exec_output = await asyncio.wait_for(
+            ExecutiveAgent(model=settings.EXECUTIVE_MODEL).execute(exec_inputs),
+            timeout=_AGENT_TIMEOUT_SECONDS,
+        )
+        result: AnalysisResult | None = exec_output["result"].get("analysis_result")  # type: ignore[assignment]
+    except Exception as exc:
+        logger.warning("executive agent failed: %s", exc)
+        result = None
+    await emit("agent_completed", {"agent": "executive"})
 
     if result is None:
-        raise RuntimeError("Analysis pipeline produced no result")
+        # Executive failed to produce a structured result — assemble a minimal one
+        # so we still surface the grounded evidence the agents gathered.
+        result = AnalysisResult(
+            query=query,
+            recommendation="ASSESS",
+            confidence_score=0,
+            executive_summary="",
+            supporting_evidence=supporting,
+            contrarian_evidence=contrarian,
+            risks=risks,
+            technology_signals=signals,
+        )
 
-    return result
+    return result, pool

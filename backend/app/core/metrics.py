@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import threading
-import time
 from collections import defaultdict
-from typing import Literal
 
 
 class _Counter:
@@ -93,9 +91,7 @@ class _Histogram:
         self,
     ) -> list[tuple[dict[str, str], dict[float, int], float, int]]:
         with self._lock:
-            return [
-                (dict(k), dict(bc), s, c) for k, (bc, s, c) in self._data.items()
-            ]
+            return [(dict(k), dict(bc), s, c) for k, (bc, s, c) in self._data.items()]
 
 
 # ---------------------------------------------------------------------------

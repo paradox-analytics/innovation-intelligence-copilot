@@ -43,10 +43,7 @@ class ResearchAgent(BaseAgent):
             for i, c in enumerate(chunks)
         )
 
-        user_prompt = (
-            f"Strategic question: {query}\n\n"
-            f"Retrieved evidence chunks:\n{chunks_text}"
-        )
+        user_prompt = f"Strategic question: {query}\n\nRetrieved evidence chunks:\n{chunks_text}"
 
         raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt)
         parsed: list[dict[str, object]] = json.loads(raw)

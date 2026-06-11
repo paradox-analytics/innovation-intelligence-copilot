@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 router = APIRouter(prefix="/analyze", tags=["streaming"])
@@ -48,7 +47,7 @@ async def emit_event(
     queue = get_event_queue(analysis_id)
     event: dict[str, object] = {
         "event": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         **data,
     }
     await queue.put(event)
@@ -128,7 +127,7 @@ async def stream_analysis(analysis_id: str) -> StreamingResponse:
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=300)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Send a keep-alive comment
                     yield ": keepalive\n\n"
                     continue

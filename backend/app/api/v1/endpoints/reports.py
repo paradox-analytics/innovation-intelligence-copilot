@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -20,9 +20,15 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 class ReportGenerateRequest(BaseModel):
-    analysis_id: str = Field(..., description="ID of the completed analysis to generate report from")
-    format: str = Field(default="executive", description="Report format: executive, technical, or briefing")
-    include_appendix: bool = Field(default=True, description="Whether to include supporting evidence appendix")
+    analysis_id: str = Field(
+        ..., description="ID of the completed analysis to generate report from"
+    )
+    format: str = Field(
+        default="executive", description="Report format: executive, technical, or briefing"
+    )
+    include_appendix: bool = Field(
+        default=True, description="Whether to include supporting evidence appendix"
+    )
 
 
 class ReportMetadata(BaseModel):
@@ -59,51 +65,67 @@ def _build_report_sections(
     result: dict[str, object] = analysis.result or {}
     sections: list[dict[str, object]] = []
 
-    sections.append({
-        "heading": "Strategic Question",
-        "content": analysis.query,
-    })
+    sections.append(
+        {
+            "heading": "Strategic Question",
+            "content": analysis.query,
+        }
+    )
 
     if "recommendation" in result:
-        sections.append({
-            "heading": "Recommendation",
-            "content": result["recommendation"],
-        })
+        sections.append(
+            {
+                "heading": "Recommendation",
+                "content": result["recommendation"],
+            }
+        )
 
     if "supporting_evidence" in result:
-        sections.append({
-            "heading": "Supporting Evidence",
-            "content": result["supporting_evidence"],
-        })
+        sections.append(
+            {
+                "heading": "Supporting Evidence",
+                "content": result["supporting_evidence"],
+            }
+        )
 
     if "contrarian_evidence" in result:
-        sections.append({
-            "heading": "Contrarian Perspectives",
-            "content": result["contrarian_evidence"],
-        })
+        sections.append(
+            {
+                "heading": "Contrarian Perspectives",
+                "content": result["contrarian_evidence"],
+            }
+        )
 
     if "risks" in result:
-        sections.append({
-            "heading": "Risk Assessment",
-            "content": result["risks"],
-        })
+        sections.append(
+            {
+                "heading": "Risk Assessment",
+                "content": result["risks"],
+            }
+        )
 
     if "technology_signals" in result:
-        sections.append({
-            "heading": "Technology Signals",
-            "content": result["technology_signals"],
-        })
+        sections.append(
+            {
+                "heading": "Technology Signals",
+                "content": result["technology_signals"],
+            }
+        )
 
     if include_appendix and "key_assumptions" in result:
-        sections.append({
-            "heading": "Appendix: Key Assumptions",
-            "content": result["key_assumptions"],
-        })
+        sections.append(
+            {
+                "heading": "Appendix: Key Assumptions",
+                "content": result["key_assumptions"],
+            }
+        )
 
     return sections
 
 
-def _render_markdown(title: str, sections: list[dict[str, object]], confidence: float | None) -> str:
+def _render_markdown(
+    title: str, sections: list[dict[str, object]], confidence: float | None
+) -> str:
     """Render report sections as markdown."""
     lines: list[str] = [f"# {title}", ""]
 
@@ -147,9 +169,7 @@ async def generate_report(
     body: ReportGenerateRequest,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, ReportResponse]:
-    result = await db.execute(
-        select(AnalysisRequest).where(AnalysisRequest.id == body.analysis_id)
-    )
+    result = await db.execute(select(AnalysisRequest).where(AnalysisRequest.id == body.analysis_id))
     analysis = result.scalar_one_or_none()
     if analysis is None:
         raise HTTPException(
@@ -165,7 +185,7 @@ async def generate_report(
         )
 
     report_id = uuid4().hex
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     analysis_result: dict[str, object] = analysis.result or {}
     executive_summary = str(analysis_result.get("executive_summary", analysis.query))
@@ -209,9 +229,7 @@ async def get_report(
             detail="analysis_id query parameter is required to retrieve a report",
         )
 
-    result = await db.execute(
-        select(AnalysisRequest).where(AnalysisRequest.id == analysis_id)
-    )
+    result = await db.execute(select(AnalysisRequest).where(AnalysisRequest.id == analysis_id))
     analysis = result.scalar_one_or_none()
     if analysis is None:
         raise HTTPException(
@@ -221,7 +239,7 @@ async def get_report(
 
     title = f"Innovation Intelligence Report: {analysis.query[:80]}"
     sections = _build_report_sections(analysis, "executive", True)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     metadata = ReportMetadata(
         id=report_id,

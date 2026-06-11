@@ -8,19 +8,19 @@ from app.models import AnalysisResult, Evidence, RiskItem, TechnologySignal
 def to_markdown(result: AnalysisResult) -> str:
     sections: list[str] = []
 
-    sections.append(f"# Innovation Intelligence Report\n")
+    sections.append("# Innovation Intelligence Report\n")
     sections.append(f"**Query:** {result.query}\n")
 
     # Recommendation
-    sections.append(f"## Recommendation\n")
+    sections.append("## Recommendation\n")
     sections.append(f"**{result.recommendation}** (Confidence: {result.confidence_score}/100)\n")
 
     # Executive Summary
-    sections.append(f"## Executive Summary\n")
+    sections.append("## Executive Summary\n")
     sections.append(f"{result.executive_summary}\n")
 
     # Supporting Evidence
-    sections.append(f"## Supporting Evidence\n")
+    sections.append("## Supporting Evidence\n")
     if result.supporting_evidence:
         for ev in result.supporting_evidence:
             sections.append(f"- **{ev.claim}** (confidence: {ev.confidence:.0%})")
@@ -31,7 +31,7 @@ def to_markdown(result: AnalysisResult) -> str:
         sections.append("_No supporting evidence collected._\n")
 
     # Contrarian Evidence
-    sections.append(f"## Contrarian Evidence\n")
+    sections.append("## Contrarian Evidence\n")
     if result.contrarian_evidence:
         for ev in result.contrarian_evidence:
             sections.append(f"- **{ev.claim}** (confidence: {ev.confidence:.0%})")
@@ -42,12 +42,11 @@ def to_markdown(result: AnalysisResult) -> str:
         sections.append("_No contrarian evidence collected._\n")
 
     # Strategic Risks
-    sections.append(f"## Strategic Risks\n")
+    sections.append("## Strategic Risks\n")
     if result.risks:
         for risk in result.risks:
             sections.append(
-                f"- [{risk.severity.value.upper()}] [{risk.category.value}] "
-                f"**{risk.description}**"
+                f"- [{risk.severity.value.upper()}] [{risk.category.value}] **{risk.description}**"
             )
             sections.append(f"  - Likelihood: {risk.likelihood.value}")
             sections.append(f"  - Mitigation: {risk.mitigation}")
@@ -56,7 +55,7 @@ def to_markdown(result: AnalysisResult) -> str:
         sections.append("_No risks identified._\n")
 
     # Key Assumptions
-    sections.append(f"## Key Assumptions\n")
+    sections.append("## Key Assumptions\n")
     if result.key_assumptions:
         for assumption in result.key_assumptions:
             sections.append(f"- {assumption}")
@@ -65,7 +64,7 @@ def to_markdown(result: AnalysisResult) -> str:
         sections.append("_No key assumptions recorded._\n")
 
     # Technology Signals
-    sections.append(f"## Technology Signals\n")
+    sections.append("## Technology Signals\n")
     if result.technology_signals:
         for signal in result.technology_signals:
             horizon = (
@@ -87,14 +86,12 @@ def to_markdown(result: AnalysisResult) -> str:
 
     # Agent Performance
     if result.agent_traces:
-        sections.append(f"## Agent Performance\n")
+        sections.append("## Agent Performance\n")
         sections.append("| Agent | Duration (ms) | Status |")
         sections.append("|-------|--------------|--------|")
         for trace in result.agent_traces:
             status = "error" if trace.error else "ok"
-            sections.append(
-                f"| {trace.agent_name} | {trace.duration_ms:.0f} | {status} |"
-            )
+            sections.append(f"| {trace.agent_name} | {trace.duration_ms:.0f} | {status} |")
         sections.append("")
 
     return "\n".join(sections)
