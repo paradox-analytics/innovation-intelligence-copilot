@@ -10,6 +10,7 @@ interface EvidenceItem {
   sourceUrl?: string;
   relevance: "high" | "medium" | "low";
   type: "supporting" | "contrarian";
+  kind?: "web" | "doc";
 }
 
 interface EvidenceListProps {

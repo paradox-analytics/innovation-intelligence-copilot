@@ -24,6 +24,7 @@ class RetrievedChunk:
     title: str
     relevance_score: float
     metadata: dict[str, object]
+    source_url: str | None = None
 
 
 async def semantic_search(
@@ -42,11 +43,12 @@ async def semantic_search(
                 dc.document_id,
                 dc.content,
                 d.title,
+                d.source_url,
                 d.metadata,
-                1 - (dc.embedding <=> :embedding::vector) AS similarity
+                1 - (dc.embedding <=> CAST(:embedding AS vector)) AS similarity
             FROM document_chunks dc
             JOIN documents d ON d.id = dc.document_id
-            ORDER BY dc.embedding <=> :embedding::vector
+            ORDER BY dc.embedding <=> CAST(:embedding AS vector)
             LIMIT :k
         """),
         {"embedding": str(query_embedding), "k": k},
@@ -61,6 +63,7 @@ async def semantic_search(
             title=row["title"],
             relevance_score=float(row["similarity"]),
             metadata=dict(row["metadata"]) if row["metadata"] else {},
+            source_url=row["source_url"],
         )
         for row in rows
     ]
@@ -80,6 +83,7 @@ async def keyword_search(
                 dc.document_id,
                 dc.content,
                 d.title,
+                d.source_url,
                 d.metadata,
                 ts_rank(
                     to_tsvector('english', dc.content),
@@ -103,6 +107,7 @@ async def keyword_search(
             title=row["title"],
             relevance_score=float(row["rank"]),
             metadata=dict(row["metadata"]) if row["metadata"] else {},
+            source_url=row["source_url"],
         )
         for row in rows
     ]

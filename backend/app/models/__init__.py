@@ -52,6 +52,8 @@ class SourceCitation:
     chunk_text: str
     relevance_score: float
     page: int | None = None
+    url: str | None = None
+    kind: str = "doc"  # "doc" (ingested corpus) | "web" (live search)
 
 
 @dataclass
@@ -78,6 +80,7 @@ class TechnologySignal:
     trend_direction: TrendDirection
     commercialization_horizon_years: float | None
     supporting_data: list[str]
+    readiness_level: int | None = None  # Technology Readiness Level, 1-9
 
 
 @dataclass

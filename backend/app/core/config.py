@@ -38,6 +38,22 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
 
+    # Per-role analysis models (cost/quality tuning)
+    # Extraction agents (support/skeptic/risk/trend) — cheap, structured tasks.
+    AGENT_MODEL: str = "claude-haiku-4-5"
+    # Executive synthesis — keep on Sonnet where judgment/prose quality matters.
+    EXECUTIVE_MODEL: str = "claude-sonnet-4-6"
+    # Web-search retrieval — Sonnet (dynamic-filtering web tools require it).
+    WEB_SEARCH_MODEL: str = "claude-sonnet-4-6"
+
+    # Retrieval / grounding
+    # Live web search (Anthropic server-side web_search/web_fetch) for citations.
+    # Bills per search AND pulls fetched page content in as input tokens — this is
+    # the dominant cost of an analysis, so keep the cap low. Disable to ground only
+    # on the ingested document corpus.
+    ENABLE_WEB_SEARCH: bool = True
+    WEB_SEARCH_MAX_USES: int = 2  # cap searches+fetches per analysis (cost control)
+
     # Sync DB URL (for alembic)
     DATABASE_URL_SYNC: str = ""
 
