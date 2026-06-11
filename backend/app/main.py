@@ -179,7 +179,15 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
 
     from sqlalchemy import select
 
+    from app.agents.cache import (
+        config_signature,
+        find_cached,
+        pool_from_json,
+        pool_to_json,
+        query_hash,
+    )
     from app.agents.orchestrator import run_analysis
+    from app.agents.retrieval import EvidenceSource
     from app.agents.serialize import serialize_analysis
     from app.api.v1.endpoints.streaming import (
         emit_analysis_complete,
@@ -208,13 +216,37 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
         analysis.status = AnalysisStatus.PROCESSING
         await db.commit()
 
+        # Look up a prior identical analysis (same query + pipeline config).
+        config_sig = config_signature()
+        prior: dict[str, object] | None = None
+        with suppress(Exception):
+            prior = await find_cached(db, query, config_sig, analysis_id)
+
+        # Result cache: return the prior result verbatim — zero drift, zero cost.
+        if prior is not None and settings.ENABLE_RESULT_CACHE:
+            analysis.status = AnalysisStatus.COMPLETED
+            analysis.confidence_score = float(prior.get("confidence_score", 0) or 0)  # type: ignore[arg-type]
+            analysis.result = prior
+            analysis.completed_at = datetime.now(UTC)
+            await db.commit()
+            await emit_analysis_complete(analysis_id, prior)
+            logger.info("analysis_cache_hit analysis_id=%s (result)", analysis_id)
+            return {"status": "completed", "analysis_id": analysis_id, "cached": True}
+
+        # Evidence cache: reuse the prior evidence pool so inputs don't drift.
+        cached_pool: list[EvidenceSource] | None = None
+        if prior is not None and settings.ENABLE_EVIDENCE_CACHE:
+            cached_pool = pool_from_json(prior.get("_evidence_pool")) or None
+
         try:
+            final_pool: list[EvidenceSource] = []
             try:
                 analysis_result, pool = await asyncio.wait_for(
-                    run_analysis(query, db, on_event),
+                    run_analysis(query, db, on_event, pool=cached_pool),
                     timeout=_ANALYSIS_TIMEOUT_SECONDS,
                 )
                 if pool:
+                    final_pool = pool
                     result_dict = serialize_analysis(analysis_result, pool, grounded=True)
                     confidence = float(analysis_result.confidence_score)
                 else:
@@ -230,6 +262,11 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
                 )
                 result_dict, confidence = await _direct_analysis(query)
                 result_dict["grounded"] = False
+
+            # Tag for cache lookup + snapshot the evidence pool for reproducibility.
+            result_dict["_query_hash"] = query_hash(query)
+            result_dict["_config_sig"] = config_sig
+            result_dict["_evidence_pool"] = pool_to_json(final_pool)
 
             analysis.status = AnalysisStatus.COMPLETED
             analysis.confidence_score = confidence
@@ -278,6 +315,7 @@ async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
     response = await client.messages.create(
         model="claude-haiku-4-5",
         max_tokens=8192,
+        temperature=settings.ANALYSIS_TEMPERATURE,
         system=(
             "You are a strategic technology analyst. Analyze the question and return a JSON object with:\n"
             '{"recommendation": "your recommendation text",'

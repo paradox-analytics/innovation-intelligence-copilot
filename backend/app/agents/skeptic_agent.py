@@ -18,20 +18,36 @@ document).
 Find weaknesses, contradictions, and reasons a proposed strategy could fail, \
 grounding each point ONLY in the sources provided and citing their index numbers.
 
-Return a JSON object:
-{
-  "contrarian_evidence": [
-    {
-      "claim": "why this might fail or be wrong",
-      "confidence": 0.0-1.0,
-      "source_indices": [1, 4]
-    }
-  ],
-  "challenged_assumptions": ["assumption 1", "assumption 2"]
-}
+Assign `confidence` by evidence strength, using this exact rubric:
+- 0.85-1.00: multiple independent sources directly support the concern
+- 0.50-0.84: one source directly supports it, or it is a strong inference
+- 0.20-0.49: only weak, indirect, or speculative support
 
-You MUST produce at least 3 items in "contrarian_evidence", each citing at least \
-one source index. Do not invent sources. Return valid JSON only, no markdown fences."""
+Produce at least 3 contrarian points, ordered by confidence (highest first). \
+Every point MUST cite at least one source index that exists in the pool. Do not \
+invent sources."""
+
+_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "contrarian_evidence": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "claim": {"type": "string"},
+                    "confidence": {"type": "number"},
+                    "source_indices": {"type": "array", "items": {"type": "integer"}},
+                },
+                "required": ["claim", "confidence", "source_indices"],
+                "additionalProperties": False,
+            },
+        },
+        "challenged_assumptions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["contrarian_evidence", "challenged_assumptions"],
+    "additionalProperties": False,
+}
 
 
 class SkepticAgent(BaseAgent):
@@ -51,12 +67,10 @@ class SkepticAgent(BaseAgent):
             "Cite source indices."
         )
 
-        raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt)
-        parsed = self._parse_json(raw, {})
-        obj: dict[str, object] = parsed if isinstance(parsed, dict) else {}
+        result = await self._ask_json(SYSTEM_PROMPT, user_prompt, "submit_skeptic", _SCHEMA)
 
-        contrarian_items = obj.get("contrarian_evidence", [])
-        items: list[dict[str, Any]] = contrarian_items if isinstance(contrarian_items, list) else []
+        raw_items = result.get("contrarian_evidence", [])
+        items = raw_items if isinstance(raw_items, list) else []
 
         contrarian_evidence: list[Evidence] = []
         for item in items:
@@ -71,9 +85,9 @@ class SkepticAgent(BaseAgent):
                 )
             )
 
-        challenged_raw = obj.get("challenged_assumptions", [])
+        raw_challenged = result.get("challenged_assumptions", [])
         challenged: list[str] = (
-            [str(a) for a in challenged_raw] if isinstance(challenged_raw, list) else []
+            [str(a) for a in raw_challenged] if isinstance(raw_challenged, list) else []
         )
 
         return {

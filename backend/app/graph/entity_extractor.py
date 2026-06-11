@@ -61,6 +61,7 @@ async def extract_entities(
     response = await client.messages.create(
         model=_DEFAULT_MODEL,
         max_tokens=8192,
+        temperature=settings.ANALYSIS_TEMPERATURE,
         system=SYSTEM_PROMPT,
         messages=[
             {

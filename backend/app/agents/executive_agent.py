@@ -21,24 +21,39 @@ SYSTEM_PROMPT = """\
 You are a chief technology strategist synthesizing multiple analyst perspectives \
 into a final recommendation for an enterprise executive audience.
 
-You will receive:
-- Supporting evidence
-- Contrarian evidence / challenged assumptions
-- Risk assessment
-- Technology signals
+You will receive supporting evidence, contrarian evidence / challenged \
+assumptions, a risk assessment, and technology signals.
 
-Produce a JSON object:
-{
-  "recommendation": "ADOPT" | "TRIAL" | "ASSESS" | "HOLD" | "AVOID",
-  "confidence_score": 0-100,
-  "executive_summary": "2-3 paragraph executive summary",
-  "key_assumptions": ["assumption 1", "assumption 2"]
+Choose `recommendation` from: ADOPT, TRIAL, ASSESS, HOLD, AVOID.
+
+Set `confidence_score` (0-100) in the recommendation, weighing evidence quality, \
+risk severity, and signal strength:
+- 80-100: strong, consistent supporting evidence; low or manageable risks
+- 50-79: mixed evidence or moderate risks
+- 0-49: weak/conflicting evidence or severe risks
+
+Write a factual 2-3 paragraph executive_summary grounded ONLY in the inputs \
+provided; do not introduce facts they do not support."""
+
+_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "recommendation": {
+            "type": "string",
+            "enum": ["ADOPT", "TRIAL", "ASSESS", "HOLD", "AVOID"],
+        },
+        "confidence_score": {"type": "integer"},
+        "executive_summary": {"type": "string"},
+        "key_assumptions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        "recommendation",
+        "confidence_score",
+        "executive_summary",
+        "key_assumptions",
+    ],
+    "additionalProperties": False,
 }
-
-The confidence_score reflects how confident you are in the recommendation, \
-accounting for evidence quality, risk severity, and trend signals.
-
-Return valid JSON only, no markdown fences."""
 
 
 def _serialize_evidence(items: list[Evidence]) -> list[dict[str, object]]:
@@ -77,9 +92,7 @@ class ExecutiveAgent(BaseAgent):
             "Synthesize into a final recommendation."
         )
 
-        raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt, max_tokens=4096)
-        parsed_obj = self._parse_json(raw, {})
-        parsed: dict[str, Any] = parsed_obj if isinstance(parsed_obj, dict) else {}
+        parsed = await self._ask_json(SYSTEM_PROMPT, user_prompt, "submit_recommendation", _SCHEMA)
 
         try:
             confidence_score = int(parsed.get("confidence_score", 0))
@@ -94,7 +107,7 @@ class ExecutiveAgent(BaseAgent):
             supporting_evidence=supporting,
             contrarian_evidence=contrarian,
             risks=risks,
-            key_assumptions=[str(a) for a in parsed.get("key_assumptions", [])],  # type: ignore[union-attr]
+            key_assumptions=[str(a) for a in parsed.get("key_assumptions", [])],
             technology_signals=signals,
         )
 

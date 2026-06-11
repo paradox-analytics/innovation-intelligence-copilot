@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,19 +66,29 @@ async def run_analysis(
     query: str,
     db: AsyncSession,
     on_event: EventHook | None = None,
+    pool: list[EvidenceSource] | None = None,
 ) -> tuple[AnalysisResult, list[EvidenceSource]]:
-    """Run the grounded multi-agent analysis. Returns the result + evidence pool."""
+    """Run the grounded multi-agent analysis. Returns the result + evidence pool.
+
+    Pass ``pool`` to reuse a cached evidence pool (deterministic re-runs) instead
+    of retrieving fresh.
+    """
     emit = on_event or _noop
 
-    # 1. Retrieve evidence from web + documents (single shared pool).
+    # 1. Retrieve evidence from web + documents (single shared pool), unless a
+    #    cached pool was supplied.
     await emit("agent_started", {"agent": "research"})
-    pool = await retrieve_evidence(query, db)
+    if pool is None:
+        pool = await retrieve_evidence(query, db)
     await emit(
         "agent_completed",
         {"agent": "research", "partial_result": {"source_count": len(pool)}},
     )
 
-    pool_text = format_pool_for_prompt(pool)
+    # Anchor every agent to the current date so "the next N years" and recency
+    # judgements are grounded in today, not the model's training cutoff.
+    today = datetime.now(UTC).date().isoformat()
+    pool_text = f"Today's date is {today}.\n\n{format_pool_for_prompt(pool)}"
     context: dict[str, object] = {"evidence_pool": pool_text, "pool": pool}
     inputs = AgentInput(query=query, context=context)
 
