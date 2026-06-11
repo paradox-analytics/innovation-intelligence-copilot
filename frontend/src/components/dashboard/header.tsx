@@ -1,7 +1,12 @@
 "use client";
 
+import {
+  notificationConfig,
+  useNotifications,
+} from "@/components/notifications/notification-provider";
 import { cn } from "@/lib/utils";
-import { Bell, ChevronRight, LogOut, User } from "lucide-react";
+import { Bell, ChevronRight, LogOut, User, X } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useState, useRef, useEffect } from "react";
@@ -15,19 +20,34 @@ const pathLabels: Record<string, string> = {
   "/settings": "Settings",
 };
 
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 export function Header() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { notifications, unreadCount, markAllRead, remove, clearAll } =
+    useNotifications();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
+      const target = event.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setShowDropdown(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(target)) {
+        setShowNotif(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -39,14 +59,21 @@ export function Header() {
     const path = "/" + segments.slice(0, index + 1).join("/");
     return {
       label:
-        pathLabels[path] ||
-        segment.charAt(0).toUpperCase() + segment.slice(1),
+        pathLabels[path] || segment.charAt(0).toUpperCase() + segment.slice(1),
       path,
     };
   });
 
   const userName = session?.user?.name ?? session?.user?.email ?? "User";
   const userImage = session?.user?.image;
+
+  const toggleNotif = () => {
+    setShowNotif((open) => {
+      // Mark everything read when opening the panel.
+      if (!open && unreadCount > 0) markAllRead();
+      return !open;
+    });
+  };
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-border-default bg-bg-secondary px-6">
@@ -56,25 +83,113 @@ export function Header() {
         {breadcrumbs.map((crumb) => (
           <span key={crumb.path} className="flex items-center gap-1.5">
             <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
-            <span className="font-medium text-text-primary">
-              {crumb.label}
-            </span>
+            <span className="font-medium text-text-primary">{crumb.label}</span>
           </span>
         ))}
       </nav>
 
       {/* User area */}
       <div className="flex items-center gap-3">
-        <button
-          className={cn(
-            "relative rounded-lg p-2 text-text-muted transition-colors",
-            "hover:bg-bg-hover hover:text-text-secondary"
+        {/* Notifications */}
+        <div className="relative" ref={notifRef}>
+          <button
+            onClick={toggleNotif}
+            className={cn(
+              "relative rounded-lg p-2 text-text-muted transition-colors",
+              "hover:bg-bg-hover hover:text-text-secondary"
+            )}
+            aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ""}`}
+          >
+            <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-blue px-1 text-[10px] font-semibold text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {showNotif && (
+            <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-lg border border-border-default bg-bg-secondary shadow-xl">
+              <div className="flex items-center justify-between border-b border-border-default px-4 py-2.5">
+                <p className="text-sm font-semibold text-text-primary">
+                  Notifications
+                </p>
+                {notifications.length > 0 && (
+                  <button
+                    onClick={clearAll}
+                    className="text-xs text-text-muted transition-colors hover:text-text-primary"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {notifications.length === 0 && (
+                  <div className="px-4 py-10 text-center text-sm text-text-muted">
+                    No notifications yet
+                  </div>
+                )}
+                {notifications.map((n) => {
+                  const config = notificationConfig[n.type];
+                  const body = (
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                          config.color
+                        )}
+                      >
+                        {config.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-text-primary">
+                          {n.title}
+                        </p>
+                        {n.description && (
+                          <p className="mt-0.5 text-xs text-text-muted line-clamp-2">
+                            {n.description}
+                          </p>
+                        )}
+                        <p className="mt-1 text-[11px] text-text-tertiary">
+                          {timeAgo(n.timestamp)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          remove(n.id);
+                        }}
+                        className="shrink-0 text-text-muted transition-colors hover:text-text-primary"
+                        aria-label="Dismiss"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                  return n.href ? (
+                    <Link
+                      key={n.id}
+                      href={n.href}
+                      onClick={() => setShowNotif(false)}
+                      className="block border-b border-border-default px-4 py-3 transition-colors last:border-0 hover:bg-bg-hover"
+                    >
+                      {body}
+                    </Link>
+                  ) : (
+                    <div
+                      key={n.id}
+                      className="border-b border-border-default px-4 py-3 last:border-0"
+                    >
+                      {body}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent-blue" />
-        </button>
+        </div>
 
         {/* User menu */}
         <div className="relative" ref={dropdownRef}>
@@ -106,9 +221,7 @@ export function Header() {
                   {userName}
                 </p>
                 {session?.user?.email && (
-                  <p className="text-xs text-text-muted">
-                    {session.user.email}
-                  </p>
+                  <p className="text-xs text-text-muted">{session.user.email}</p>
                 )}
               </div>
               <button
