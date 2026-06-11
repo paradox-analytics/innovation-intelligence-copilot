@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -10,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.neo4j_client import Neo4jClient, get_graph_db
-from app.models.knowledge import Entity, EntityType, Relationship
+from app.models.knowledge import Entity, EntityType
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
@@ -47,7 +45,9 @@ class SubgraphResponse(BaseModel):
 
 
 class TechnologySignalRequest(BaseModel):
-    topic: str = Field(..., min_length=2, max_length=512, description="Technology topic to detect signals for")
+    topic: str = Field(
+        ..., min_length=2, max_length=512, description="Technology topic to detect signals for"
+    )
     depth: int = Field(default=2, ge=1, le=5, description="Graph traversal depth")
 
 
@@ -225,9 +225,7 @@ async def get_subgraph(
                 )
             )
 
-    return {
-        "data": SubgraphResponse(entities=entities, relationships=relationships)
-    }
+    return {"data": SubgraphResponse(entities=entities, relationships=relationships)}
 
 
 @router.post(
@@ -256,9 +254,7 @@ async def detect_signals(
     for record in records:
         raw_strength = float(record.get("signal_strength", 0))
         # Normalize to 0-1 range
-        max_strength = max(
-            (float(r.get("signal_strength", 0)) for r in records), default=1.0
-        )
+        max_strength = max((float(r.get("signal_strength", 0)) for r in records), default=1.0)
         normalized = raw_strength / max_strength if max_strength > 0 else 0.0
 
         signals.append(

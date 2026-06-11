@@ -65,9 +65,7 @@ class DocumentChunk(Base):
         String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(1536), nullable=True
-    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     metadata_: Mapped[dict[str, object] | None] = mapped_column(
         "metadata", JSONB, nullable=True, default=dict

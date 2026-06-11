@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.agents.retrieval import EvidenceSource, citations_for_indices
 from app.models import AgentInput, Evidence
@@ -55,9 +56,7 @@ class SkepticAgent(BaseAgent):
         obj: dict[str, object] = parsed if isinstance(parsed, dict) else {}
 
         contrarian_items = obj.get("contrarian_evidence", [])
-        items: list[dict[str, object]] = (
-            contrarian_items if isinstance(contrarian_items, list) else []
-        )
+        items: list[dict[str, Any]] = contrarian_items if isinstance(contrarian_items, list) else []
 
         contrarian_evidence: list[Evidence] = []
         for item in items:

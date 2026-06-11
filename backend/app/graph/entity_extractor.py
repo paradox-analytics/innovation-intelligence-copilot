@@ -53,7 +53,12 @@ async def extract_entities(
         model=_DEFAULT_MODEL,
         max_tokens=8192,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": f"Extract the most important entities (max 20) and relationships (max 15) from:\n\n{text[:4000]}"}],
+        messages=[
+            {
+                "role": "user",
+                "content": f"Extract the most important entities (max 20) and relationships (max 15) from:\n\n{text[:4000]}",
+            }
+        ],
     )
 
     raw = response.content[0].text.strip()
@@ -74,7 +79,7 @@ async def extract_entities(
             raw = raw[start:]
         end = raw.rfind("}")
         if end >= 0:
-            raw = raw[:end + 1]
+            raw = raw[: end + 1]
 
     try:
         parsed: dict[str, list[dict[str, object]]] = json.loads(raw)
@@ -84,7 +89,7 @@ async def extract_entities(
         start = raw.find("{")
         end = raw.rfind("}")
         if start >= 0 and end > start:
-            parsed = json.loads(raw[start:end + 1])
+            parsed = json.loads(raw[start : end + 1])
         else:
             logger.error("Could not parse entity extraction response: %s", raw[:200])
             return [], []

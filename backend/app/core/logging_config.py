@@ -3,12 +3,8 @@ from __future__ import annotations
 import logging
 import re
 import sys
-from typing import TYPE_CHECKING
 
 import structlog
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 # ---------------------------------------------------------------------------
 # Sensitive-data redactor
@@ -18,9 +14,9 @@ _EMAIL_RE = re.compile(
     r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
 )
 _API_KEY_PATTERNS = re.compile(
-    r"(?:sk-[a-zA-Z0-9_-]{20,})"           # OpenAI-style
-    r"|(?:sk-ant-[a-zA-Z0-9_-]{20,})"      # Anthropic-style
-    r"|(?:iic_[a-zA-Z0-9_-]{20,})"         # Internal API keys
+    r"(?:sk-[a-zA-Z0-9_-]{20,})"  # OpenAI-style
+    r"|(?:sk-ant-[a-zA-Z0-9_-]{20,})"  # Anthropic-style
+    r"|(?:iic_[a-zA-Z0-9_-]{20,})"  # Internal API keys
     r"|(?:Bearer\s+[a-zA-Z0-9._-]{20,})",  # JWT bearer tokens in log text
 )
 

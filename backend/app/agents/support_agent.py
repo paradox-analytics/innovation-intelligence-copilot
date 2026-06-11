@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.agents.retrieval import EvidenceSource, citations_for_indices
 from app.models import AgentInput, Evidence
@@ -48,7 +49,7 @@ class SupportAgent(BaseAgent):
 
         raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt)
         parsed = self._parse_json(raw, [])
-        items: list[dict[str, object]] = parsed if isinstance(parsed, list) else []
+        items: list[dict[str, Any]] = parsed if isinstance(parsed, list) else []
 
         evidence_list: list[Evidence] = []
         for item in items:

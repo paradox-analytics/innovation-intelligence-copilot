@@ -9,7 +9,6 @@ import anthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.rag.embeddings import embed_text
 from app.rag.reranker import reciprocal_rank_fusion
 from app.rag.retriever import RetrievedChunk, hybrid_search, semantic_search
 
@@ -142,9 +141,7 @@ async def expanded_retrieval(
 
     # Step 2: generate alternatives
     alternatives = await generate_alternative_queries(query, model=model)
-    alt_tasks = [
-        hybrid_search(alt_query, db, top_k=top_k * 2) for alt_query in alternatives
-    ]
+    alt_tasks = [hybrid_search(alt_query, db, top_k=top_k * 2) for alt_query in alternatives]
 
     # Step 3: optional HyDE
     hyde_task = hyde_search(query, db, top_k=top_k * 2, model=model) if use_hyde else None

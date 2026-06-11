@@ -95,28 +95,30 @@ class KnowledgeGraphService:
         seen_rels: set[str] = set()
 
         for record in records:
-            entities.append({
-                "id": record["entity_id"],
-                "name": record["entity_name"],
-                "type": record["entity_type"],
-            })
+            entities.append(
+                {
+                    "id": record["entity_id"],
+                    "name": record["entity_name"],
+                    "type": record["entity_type"],
+                }
+            )
             for conn in record["connections"]:
                 if conn.get("neighbor_id") is None:
                     continue
                 rel_key = f"{record['entity_id']}-{conn['neighbor_id']}-{conn['relationship']}"
                 if rel_key not in seen_rels:
                     seen_rels.add(rel_key)
-                    relationships.append({
-                        "source": record["entity_id"],
-                        "target": conn["neighbor_id"],
-                        "type": conn["relationship"],
-                    })
+                    relationships.append(
+                        {
+                            "source": record["entity_id"],
+                            "target": conn["neighbor_id"],
+                            "type": conn["relationship"],
+                        }
+                    )
 
         return {"entities": entities, "relationships": relationships}
 
-    async def detect_technology_signals(
-        self, technology: str
-    ) -> list[dict[str, object]]:
+    async def detect_technology_signals(self, technology: str) -> list[dict[str, object]]:
         """Query graph for technology trend signals: patent growth, startup
         clusters, and research publication density around a technology node."""
         records = await self._client.execute_read(
@@ -143,33 +145,39 @@ class KnowledgeGraphService:
         signals: list[dict[str, object]] = []
         for record in records:
             if record["patent_count"] > 0:
-                signals.append({
-                    "type": "patent_growth",
-                    "description": (
-                        f"{record['patent_count']} patent entities linked to "
-                        f"{record['technology']}"
-                    ),
-                    "count": record["patent_count"],
-                })
+                signals.append(
+                    {
+                        "type": "patent_growth",
+                        "description": (
+                            f"{record['patent_count']} patent entities linked to "
+                            f"{record['technology']}"
+                        ),
+                        "count": record["patent_count"],
+                    }
+                )
             if record["startup_count"] > 0:
-                signals.append({
-                    "type": "startup_activity",
-                    "description": (
-                        f"{record['startup_count']} startups developing "
-                        f"{record['technology']}: "
-                        f"{', '.join(record['top_startups'])}"
-                    ),
-                    "count": record["startup_count"],
-                })
+                signals.append(
+                    {
+                        "type": "startup_activity",
+                        "description": (
+                            f"{record['startup_count']} startups developing "
+                            f"{record['technology']}: "
+                            f"{', '.join(record['top_startups'])}"
+                        ),
+                        "count": record["startup_count"],
+                    }
+                )
             if record["research_org_count"] > 0:
-                signals.append({
-                    "type": "research_momentum",
-                    "description": (
-                        f"{record['research_org_count']} research orgs studying "
-                        f"{record['technology']}: "
-                        f"{', '.join(record['top_research_orgs'])}"
-                    ),
-                    "count": record["research_org_count"],
-                })
+                signals.append(
+                    {
+                        "type": "research_momentum",
+                        "description": (
+                            f"{record['research_org_count']} research orgs studying "
+                            f"{record['technology']}: "
+                            f"{', '.join(record['top_research_orgs'])}"
+                        ),
+                        "count": record["research_org_count"],
+                    }
+                )
 
         return signals

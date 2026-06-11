@@ -9,10 +9,10 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
 from app.core.database import Base
+from app.models.analysis import AgentTrace, AnalysisRequest  # noqa: F401
 
 # Import all models so Alembic sees them for autogenerate
 from app.models.document import Document, DocumentChunk  # noqa: F401
-from app.models.analysis import AnalysisRequest, AgentTrace  # noqa: F401
 from app.models.knowledge import Entity, Relationship  # noqa: F401
 from app.models.user import User  # noqa: F401
 

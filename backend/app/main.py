@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC
 from uuid import uuid4
 
@@ -65,7 +65,7 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
         async with async_session_factory() as db:
             from sqlalchemy import text as sql_text
 
-            for chunk, embedding in zip(chunks, embeddings):
+            for chunk, embedding in zip(chunks, embeddings, strict=False):
                 embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
                 await db.execute(
                     sql_text(
@@ -92,7 +92,6 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
             )
 
             # Map extracted entity types to the DB enum
-            valid_types = {"TECHNOLOGY", "COMPANY", "STARTUP", "MARKET", "PATENT", "RESEARCH_TOPIC"}
             type_map: dict[str, str] = {
                 "technology": "TECHNOLOGY",
                 "company": "COMPANY",
@@ -196,10 +195,8 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
     logger.info("analysis_started analysis_id=%s query=%s", analysis_id, query[:80])
 
     async def on_event(event_type: str, data: dict[str, object]) -> None:
-        try:
+        with suppress(Exception):  # streaming is best-effort
             await emit_event(analysis_id, event_type, data)
-        except Exception:
-            pass
 
     async with async_session_factory() as db:
         result = await db.execute(select(AnalysisRequest).where(AnalysisRequest.id == analysis_id))
@@ -289,7 +286,10 @@ async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
         messages=[{"role": "user", "content": f"Strategic question: {query}"}],
     )
 
-    raw = response.content[0].text.strip()
+    from anthropic.types import TextBlock
+
+    _block = response.content[0]
+    raw = (_block.text if isinstance(_block, TextBlock) else "").strip()
     if raw.startswith("```"):
         lines = raw.split("\n")
         lines = lines[1:]
@@ -347,10 +347,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await task_queue.stop_worker()
     if _worker_task is not None:
         _worker_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await _worker_task
-        except asyncio.CancelledError:
-            pass
     await task_queue.close()
 
     logger.info("Closing database connections...")

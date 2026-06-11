@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import ClassVar
 
 from pydantic import BaseModel, Field
@@ -32,8 +31,7 @@ class BaseTool(ABC):
     description: ClassVar[str] = ""
 
     @abstractmethod
-    async def execute(self, **kwargs: object) -> ToolResult:
-        ...
+    async def execute(self, **kwargs: object) -> ToolResult: ...
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +49,9 @@ class WebSearchInput(BaseModel):
 class DatabaseQueryInput(BaseModel):
     """Input schema for knowledge graph queries."""
 
-    topic: str = Field(..., min_length=1, max_length=300, description="Topic to query in the knowledge graph")
+    topic: str = Field(
+        ..., min_length=1, max_length=300, description="Topic to query in the knowledge graph"
+    )
     entity_type: str | None = Field(default=None, description="Filter by entity type")
     max_depth: int = Field(default=2, ge=1, le=5, description="Max traversal depth")
     limit: int = Field(default=50, ge=1, le=200, description="Maximum entities to return")
@@ -71,7 +71,9 @@ class DocumentSearchInput(BaseModel):
 class CalculatorInput(BaseModel):
     """Input schema for confidence score calculations."""
 
-    scores: list[float] = Field(..., min_length=1, description="List of confidence scores (0.0-1.0)")
+    scores: list[float] = Field(
+        ..., min_length=1, description="List of confidence scores (0.0-1.0)"
+    )
     weights: list[float] | None = Field(
         default=None,
         description="Optional weights for each score (must match scores length)",
@@ -260,7 +262,7 @@ class CalculatorTool(BaseTool):
             total_weight = sum(weights)
             if total_weight == 0:
                 return ToolResult(success=False, error="Total weight cannot be zero")
-            result = sum(s * w for s, w in zip(scores, weights)) / total_weight
+            result = sum(s * w for s, w in zip(scores, weights, strict=False)) / total_weight
 
         elif parsed.operation == "harmonic_mean":
             if any(s == 0 for s in scores):

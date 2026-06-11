@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from app.agents.retrieval import EvidenceSource
 from app.models import AgentInput, TechnologySignal, TrendDirection
 
 from .base import BaseAgent
@@ -38,9 +38,9 @@ genuinely reflect that signal — do NOT reuse the same values across signals. \
 Ground supporting_data in the provided sources. Return valid JSON only, no markdown fences."""
 
 
-def _clamp_trl(value: object) -> int | None:
+def _clamp_trl(value: Any) -> int | None:
     try:
-        trl = int(value)  # type: ignore[arg-type]
+        trl = int(value)
     except (TypeError, ValueError):
         return None
     return max(1, min(9, trl))
@@ -53,7 +53,6 @@ class TrendAgent(BaseAgent):
     async def _run(self, input_data: AgentInput) -> dict[str, object]:
         query = input_data["query"]
         context = input_data["context"]
-        pool: list[EvidenceSource] = context.get("pool", [])  # type: ignore[assignment]
         pool_text: str = str(context.get("evidence_pool", ""))
 
         user_prompt = (
@@ -65,7 +64,7 @@ class TrendAgent(BaseAgent):
 
         raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt)
         parsed = self._parse_json(raw, [])
-        items: list[dict[str, object]] = parsed if isinstance(parsed, list) else []
+        items: list[dict[str, Any]] = parsed if isinstance(parsed, list) else []
 
         signals: list[TechnologySignal] = []
         for item in items:

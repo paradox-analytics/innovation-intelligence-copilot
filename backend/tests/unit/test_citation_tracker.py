@@ -5,15 +5,11 @@ from __future__ import annotations
 import pytest
 
 from app.rag.citation_tracker import (
-    AnnotatedClaim,
-    Citation,
-    CitationReport,
     CitationTracker,
     _extract_word_set,
     _word_overlap_ratio,
 )
 from app.rag.retriever import RetrievedChunk
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -77,13 +73,9 @@ class TestCitationAssignment:
     """Tests for assigning citations to claims."""
 
     @pytest.mark.unit
-    def test_matching_claim_gets_citation(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_matching_claim_gets_citation(self, tracker: CitationTracker) -> None:
         """A claim with overlapping words should get a citation."""
-        claims = [
-            "Quantum computing enables molecular simulation at scale"
-        ]
+        claims = ["Quantum computing enables molecular simulation at scale"]
         report = tracker.track(claims)
 
         assert len(report.annotated_claims) == 1
@@ -91,9 +83,7 @@ class TestCitationAssignment:
         assert report.annotated_claims[0].is_supported is True
 
     @pytest.mark.unit
-    def test_multiple_claims_get_correct_citations(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_multiple_claims_get_correct_citations(self, tracker: CitationTracker) -> None:
         """Multiple claims should each get citations from relevant chunks."""
         claims = [
             "Quantum computing enables molecular simulation for drug discovery",
@@ -108,9 +98,7 @@ class TestCitationAssignment:
             assert len(ac.citation_ids) >= 1
 
     @pytest.mark.unit
-    def test_claim_matching_multiple_chunks(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_claim_matching_multiple_chunks(self, tracker: CitationTracker) -> None:
         """A claim mentioning terms from multiple chunks should get multiple citations."""
         claims = [
             "Quantum computing molecular simulation faces error correction bottleneck challenges"
@@ -123,9 +111,7 @@ class TestCitationAssignment:
         assert len(report.annotated_claims[0].citation_ids) >= 2
 
     @pytest.mark.unit
-    def test_citation_ids_are_unique_per_chunk(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_citation_ids_are_unique_per_chunk(self, tracker: CitationTracker) -> None:
         """Each unique source chunk should have a unique citation ID."""
         claims = [
             "Quantum computing molecular simulation",
@@ -152,9 +138,7 @@ class TestBibliography:
     """Tests for bibliography generation."""
 
     @pytest.mark.unit
-    def test_bibliography_contains_all_cited_sources(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_bibliography_contains_all_cited_sources(self, tracker: CitationTracker) -> None:
         """The bibliography should list every cited source exactly once."""
         claims = [
             "Quantum computing enables molecular simulation",
@@ -187,9 +171,7 @@ class TestBibliography:
         assert "No sources cited" in formatted
 
     @pytest.mark.unit
-    def test_bibliography_citation_ids_sequential(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_bibliography_citation_ids_sequential(self, tracker: CitationTracker) -> None:
         """Citation IDs in the bibliography should be sequential starting at 1."""
         claims = [
             "Quantum computing molecular simulation drug discovery",
@@ -211,13 +193,9 @@ class TestUnsupportedClaims:
     """Tests for detecting claims without source support."""
 
     @pytest.mark.unit
-    def test_unsupported_claim_detected(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_unsupported_claim_detected(self, tracker: CitationTracker) -> None:
         """Claims with no matching source should be flagged as unsupported."""
-        claims = [
-            "The weather in Antarctica is extremely cold in winter"
-        ]
+        claims = ["The weather in Antarctica is extremely cold in winter"]
         report = tracker.track(claims)
 
         assert len(report.unsupported_claims) == 1
@@ -225,9 +203,7 @@ class TestUnsupportedClaims:
         assert report.annotated_claims[0].is_supported is False
 
     @pytest.mark.unit
-    def test_mixed_supported_and_unsupported(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_mixed_supported_and_unsupported(self, tracker: CitationTracker) -> None:
         """Mix of supported and unsupported claims should be classified correctly."""
         claims = [
             "Quantum computing enables molecular simulation at scale",
@@ -244,9 +220,7 @@ class TestUnsupportedClaims:
         assert len(unsupported) == 1
 
     @pytest.mark.unit
-    def test_support_rate_calculation(
-        self, tracker: CitationTracker
-    ) -> None:
+    def test_support_rate_calculation(self, tracker: CitationTracker) -> None:
         """Support rate should be correctly computed."""
         claims = [
             "Quantum computing molecular simulation",

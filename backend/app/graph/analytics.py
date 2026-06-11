@@ -109,9 +109,7 @@ class GraphAnalytics:
                 continue
 
             connected: list[str] = record["connected_techs"]
-            cluster_techs = [tech_name] + [
-                t for t in connected if t not in seen
-            ]
+            cluster_techs = [tech_name] + [t for t in connected if t not in seen]
 
             for t in cluster_techs:
                 seen.add(t)
@@ -125,14 +123,10 @@ class GraphAnalytics:
                 )
             )
 
-        logger.info(
-            "Technology landscape for '%s': %d clusters found", domain, len(clusters)
-        )
+        logger.info("Technology landscape for '%s': %d clusters found", domain, len(clusters))
         return clusters
 
-    async def startup_ecosystem(
-        self, technology: str, limit: int = 20
-    ) -> list[StartupProfile]:
+    async def startup_ecosystem(self, technology: str, limit: int = 20) -> list[StartupProfile]:
         """Find startups working in a technology area."""
         records = await self._client.execute_read(
             """
@@ -165,9 +159,7 @@ class GraphAnalytics:
                 )
             )
 
-        logger.info(
-            "Startup ecosystem for '%s': %d startups found", technology, len(startups)
-        )
+        logger.info("Startup ecosystem for '%s': %d startups found", technology, len(startups))
         return startups
 
     async def patent_trends(self, technology: str) -> list[PatentTrend]:

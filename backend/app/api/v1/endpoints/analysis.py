@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,8 +21,12 @@ router = APIRouter(prefix="/analyze", tags=["analysis"])
 
 
 class AnalysisSubmitRequest(BaseModel):
-    query: str = Field(..., min_length=10, max_length=4000, description="Strategic question to analyze")
-    context: dict[str, object] | None = Field(default=None, description="Optional context for the analysis")
+    query: str = Field(
+        ..., min_length=10, max_length=4000, description="Strategic question to analyze"
+    )
+    context: dict[str, object] | None = Field(
+        default=None, description="Optional context for the analysis"
+    )
 
 
 class AnalysisSubmitResponse(BaseModel):
@@ -66,7 +70,7 @@ async def submit_analysis(
         id=uuid4().hex,
         query=body.query,
         status=AnalysisStatus.PENDING,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(analysis)
     await db.commit()
@@ -80,13 +84,17 @@ async def submit_analysis(
         )
     except Exception:
         import asyncio
+
         from app.main import _handle_analysis_task
-        asyncio.create_task(
-            _handle_analysis_task({
-                "analysis_id": analysis.id,
-                "query": body.query,
-                "context": body.context or {},
-            })
+
+        asyncio.create_task(  # noqa: RUF006 — fire-and-forget fallback when Redis is down
+            _handle_analysis_task(
+                {
+                    "analysis_id": analysis.id,
+                    "query": body.query,
+                    "context": body.context or {},
+                }
+            )
         )
 
     return {
@@ -106,9 +114,7 @@ async def get_analysis(
     analysis_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, AnalysisResultResponse]:
-    result = await db.execute(
-        select(AnalysisRequest).where(AnalysisRequest.id == analysis_id)
-    )
+    result = await db.execute(select(AnalysisRequest).where(AnalysisRequest.id == analysis_id))
     analysis = result.scalar_one_or_none()
     if analysis is None:
         raise HTTPException(
@@ -138,9 +144,7 @@ async def get_analysis_status(
     analysis_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, AnalysisStatusResponse]:
-    result = await db.execute(
-        select(AnalysisRequest).where(AnalysisRequest.id == analysis_id)
-    )
+    result = await db.execute(select(AnalysisRequest).where(AnalysisRequest.id == analysis_id))
     analysis = result.scalar_one_or_none()
     if analysis is None:
         raise HTTPException(

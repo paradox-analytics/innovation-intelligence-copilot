@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
@@ -40,7 +40,7 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105 — OAuth token_type literal, not a secret
 
 
 class UserResponse(BaseModel):
@@ -80,7 +80,7 @@ async def register(
             detail="Email already registered",
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     user = User(
         id=uuid4().hex,
         email=body.email,
@@ -150,7 +150,7 @@ async def generate_api_key(
 ) -> dict[str, APIKeyResponse]:
     new_key = f"iic_{secrets.token_urlsafe(32)}"
     current_user.api_key = new_key
-    current_user.updated_at = datetime.now(timezone.utc)
+    current_user.updated_at = datetime.now(UTC)
     db.add(current_user)
     await db.flush()
 

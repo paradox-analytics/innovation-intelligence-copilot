@@ -76,7 +76,7 @@ async def _ingest_text(
     )
 
     # 4. Store chunks with embeddings
-    for chunk, embedding in zip(chunks, embeddings):
+    for chunk, embedding in zip(chunks, embeddings, strict=False):
         await db.execute(
             text("""
                 INSERT INTO document_chunks (id, document_id, content, embedding, chunk_index, metadata)

@@ -49,9 +49,7 @@ def _validate_database_url(url: str) -> list[str]:
             "DATABASE_URL appears malformed (missing '@' separating credentials from host)."
         )
     if "/" not in url.split("@", 1)[-1]:
-        errors.append(
-            "DATABASE_URL appears malformed (missing database name after host)."
-        )
+        errors.append("DATABASE_URL appears malformed (missing database name after host).")
     return errors
 
 
@@ -92,10 +90,7 @@ def validate_environment() -> None:
     # Required: SECRET_KEY (must not be placeholder in production)
     # ------------------------------------------------------------------
     if not settings.SECRET_KEY:
-        errors.append(
-            "SECRET_KEY is required. Generate one with:\n"
-            "  openssl rand -base64 32"
-        )
+        errors.append("SECRET_KEY is required. Generate one with:\n  openssl rand -base64 32")
     elif is_production and _is_placeholder(settings.SECRET_KEY):
         errors.append(
             "SECRET_KEY is set to a placeholder value. Generate a real secret with:\n"
@@ -121,14 +116,10 @@ def validate_environment() -> None:
     # Warnings for optional but recommended settings
     # ------------------------------------------------------------------
     if not settings.ANTHROPIC_API_KEY:
-        warnings.append(
-            "ANTHROPIC_API_KEY is not set. AI analysis features will not work."
-        )
+        warnings.append("ANTHROPIC_API_KEY is not set. AI analysis features will not work.")
 
     if not settings.OPENAI_API_KEY:
-        warnings.append(
-            "OPENAI_API_KEY is not set. Embedding generation will not work."
-        )
+        warnings.append("OPENAI_API_KEY is not set. Embedding generation will not work.")
 
     if settings.SECRET_KEY and _is_placeholder(settings.SECRET_KEY) and not is_production:
         warnings.append(
@@ -162,9 +153,7 @@ def validate_environment() -> None:
         for i, error in enumerate(errors, 1):
             msg_parts.append(f"  {i}. {error}")
         msg_parts.append("=" * 70)
-        msg_parts.append(
-            f"Fix the above errors and restart. Environment: {environment}"
-        )
+        msg_parts.append(f"Fix the above errors and restart. Environment: {environment}")
         msg_parts.append("")
         full_message = "\n".join(msg_parts)
         logger.critical(full_message)

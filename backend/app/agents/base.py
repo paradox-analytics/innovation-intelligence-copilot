@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 
 import anthropic
+from anthropic.types import TextBlock
 
 from app.core.config import settings
 from app.core.usage import log_usage
@@ -70,7 +71,8 @@ class BaseAgent(ABC):
             messages=[{"role": "user", "content": user_prompt}],
         )
         log_usage(logger, self.name, self.model, response.usage)
-        return response.content[0].text
+        block = response.content[0]
+        return block.text if isinstance(block, TextBlock) else ""
 
     @staticmethod
     def _parse_json(raw: str, default: object) -> object:

@@ -63,7 +63,7 @@ async def semantic_search(
             title=row["title"],
             relevance_score=float(row["similarity"]),
             metadata=dict(row["metadata"]) if row["metadata"] else {},
-            source_url=row["source_url"],
+            source_url=row.get("source_url"),
         )
         for row in rows
     ]
@@ -107,7 +107,7 @@ async def keyword_search(
             title=row["title"],
             relevance_score=float(row["rank"]),
             metadata=dict(row["metadata"]) if row["metadata"] else {},
-            source_url=row["source_url"],
+            source_url=row.get("source_url"),
         )
         for row in rows
     ]

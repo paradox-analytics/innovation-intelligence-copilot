@@ -31,9 +31,7 @@ class Entity(Base):
         Enum(EntityType, name="entity_type_enum"),
         nullable=False,
     )
-    properties: Mapped[dict[str, object] | None] = mapped_column(
-        JSONB, nullable=True, default=dict
-    )
+    properties: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True, default=dict)
     neo4j_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
 
     outgoing_relationships: Mapped[list[Relationship]] = relationship(
@@ -67,9 +65,7 @@ class Relationship(Base):
         index=True,
     )
     relationship_type: Mapped[str] = mapped_column(String(128), nullable=False)
-    properties: Mapped[dict[str, object] | None] = mapped_column(
-        JSONB, nullable=True, default=dict
-    )
+    properties: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True, default=dict)
     neo4j_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
 
     source_entity: Mapped[Entity] = relationship(

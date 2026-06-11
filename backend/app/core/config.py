@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Innovation Intelligence Copilot"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
-    SECRET_KEY: str = "change-me-in-production"
+    SECRET_KEY: str = "change-me-in-production"  # noqa: S105 — default, overridden in prod
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
 
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Neo4j
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = "password"
+    NEO4J_PASSWORD: str = "password"  # noqa: S105 — default, overridden in prod
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
