@@ -109,7 +109,8 @@ jobs:
         run: poetry run pytest -m "unit" --cov=backend/app --cov-report=xml
 
       - name: Run integration tests
-        run: poetry run pytest -m "integration" --cov=backend/app --cov-report=xml --cov-append
+        # Tolerate pytest exit code 5 (no integration tests collected yet).
+        run: poetry run pytest -m "integration" --cov=backend/app --cov-report=xml --cov-append || [ $? -eq 5 ]
 
   frontend-lint:
     name: Frontend Lint + Type Check
