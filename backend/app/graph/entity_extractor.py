@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
-from uuid import uuid4
 
 import anthropic
 
@@ -11,7 +11,15 @@ from app.models import GraphEntity, GraphRelationship
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "claude-sonnet-4-6"
+# Entity extraction is structured work — use the cheap agent model.
+_DEFAULT_MODEL = settings.AGENT_MODEL
+
+
+def _stable_entity_id(name: str, entity_type: str) -> str:
+    """Deterministic id so the same (name, type) dedupes across documents and analyses."""
+    key = f"{entity_type.strip().lower()}:{' '.join(name.split()).lower()}"
+    return hashlib.md5(key.encode()).hexdigest()  # noqa: S324 — non-crypto, just a stable key
+
 
 SYSTEM_PROMPT = """\
 You are an entity extraction system for a technology knowledge graph. \
@@ -46,6 +54,7 @@ no markdown fences."""
 async def extract_entities(
     text: str,
     document_id: str | None = None,
+    provenance: str = "document",
 ) -> tuple[list[GraphEntity], list[GraphRelationship]]:
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
@@ -100,10 +109,12 @@ async def extract_entities(
 
     for item in parsed.get("entities", []):
         name = str(item.get("name", ""))
-        entity_id = uuid4().hex
+        entity_type = str(item.get("entity_type", "unknown"))
+        entity_id = _stable_entity_id(name, entity_type)
         name_to_id[name.lower()] = entity_id
 
         props: dict[str, object] = item.get("properties", {}) or {}
+        props["provenance"] = provenance
         if document_id:
             props["source_document_id"] = document_id
 
@@ -111,7 +122,7 @@ async def extract_entities(
             GraphEntity(
                 id=entity_id,
                 name=name,
-                entity_type=str(item.get("entity_type", "unknown")),
+                entity_type=entity_type,
                 properties=props,
             )
         )
@@ -132,12 +143,14 @@ async def extract_entities(
             )
             continue
 
+        rel_props: dict[str, object] = item.get("properties", {}) or {}
+        rel_props["provenance"] = provenance
         relationships.append(
             GraphRelationship(
                 source_id=source_id,
                 target_id=target_id,
                 relationship_type=str(item.get("relationship_type", "related_to")),
-                properties=item.get("properties", {}) or {},
+                properties=rel_props,
             )
         )
 

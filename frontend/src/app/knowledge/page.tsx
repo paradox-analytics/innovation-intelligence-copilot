@@ -1,6 +1,7 @@
 "use client";
 
 import { DashboardLayout } from "@/components/dashboard/layout";
+import { HowItWorks } from "@/components/ui/how-it-works";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -409,6 +410,31 @@ export default function KnowledgePage() {
                 companies, and market signals.
               </p>
             </div>
+
+            <HowItWorks title="How the knowledge graph works">
+              <p>
+                The graph maps the <strong>entities</strong> in your space —
+                technologies, companies, startups, markets — and the{" "}
+                <strong>relationships</strong> between them (develops, competes
+                with, funds, partners with…).
+              </p>
+              <p>
+                Entities are extracted from your{" "}
+                <a
+                  href="/documents"
+                  className="text-accent-blue hover:underline"
+                >
+                  uploaded documents
+                </a>{" "}
+                and from your completed analyses — each node is tagged with its
+                origin (<span className="text-text-primary">document</span> vs{" "}
+                <span className="text-text-primary">analysis</span>).
+              </p>
+              <p>
+                <strong>Signals</strong> score how much activity (patents,
+                funding, research, adoption) surrounds a technology.
+              </p>
+            </HowItWorks>
 
             {/* Loading state */}
             {loading && (

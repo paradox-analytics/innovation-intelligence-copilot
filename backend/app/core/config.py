@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     ENABLE_WEB_SEARCH: bool = True
     WEB_SEARCH_MAX_USES: int = 2  # cap searches+fetches per analysis (cost control)
 
+    # Feed completed analyses into the knowledge graph (one cheap entity-extraction
+    # call per analysis). Disable to build the graph from documents only.
+    ENABLE_KG_FROM_ANALYSIS: bool = True
+
     # Sync DB URL (for alembic)
     DATABASE_URL_SYNC: str = ""
 

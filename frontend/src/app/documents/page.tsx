@@ -32,6 +32,8 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNotifications } from "@/components/notifications/notification-provider";
+import { HowItWorks } from "@/components/ui/how-it-works";
 
 // --- Types ---
 
@@ -132,6 +134,7 @@ export default function DocumentsPage() {
   const [uploads, setUploads] = useState<UploadFile[]>([]);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const { notify } = useNotifications();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch documents from API
@@ -201,6 +204,7 @@ export default function DocumentsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    const deletedTitle = documents.find((d) => d.id === id)?.title;
     setDeleting((prev) => new Set(prev).add(id));
     try {
       await apiClient.deleteDocument(id);
@@ -209,6 +213,11 @@ export default function DocumentsPage() {
         const next = new Set(prev);
         next.delete(id);
         return next;
+      });
+      notify({
+        type: "document_deleted",
+        title: "Document deleted",
+        description: deletedTitle,
       });
     } catch (err) {
       // Show error inline (in a production app, use a toast)
@@ -282,6 +291,12 @@ export default function DocumentsPage() {
 
       // Add the real document to our list
       setDocuments((prev) => [mapApiDocToDisplay(doc), ...prev]);
+      notify({
+        type: "document_uploaded",
+        title: "Document uploaded",
+        description: `${doc.title} — indexing for retrieval…`,
+        href: "/documents",
+      });
     } catch (err) {
       setUploads((prev) =>
         prev.map((u) =>
@@ -359,6 +374,23 @@ export default function DocumentsPage() {
             </Button>
           </div>
         </div>
+
+        <HowItWorks title="How documents work">
+          <p>
+            Upload reports, filings, research papers, or notes (PDF or text).
+            Each document is split into passages and embedded, so your analyses
+            can <strong>retrieve and cite them</strong> as the document half of
+            their evidence.
+          </p>
+          <p>
+            Companies, technologies, and markets — and how they relate — are
+            also extracted into the{" "}
+            <a href="/knowledge" className="text-accent-blue hover:underline">
+              Knowledge Graph
+            </a>
+            .
+          </p>
+        </HowItWorks>
 
         {/* Drop zone */}
         <div

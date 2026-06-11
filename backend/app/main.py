@@ -239,6 +239,16 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
 
             await on_event("agent_completed", {"agent": "executive"})
             await emit_analysis_complete(analysis_id, result_dict)
+
+            # Feed the result into the knowledge graph (best-effort, non-fatal).
+            if settings.ENABLE_KG_FROM_ANALYSIS:
+                try:
+                    from app.graph.persistence import ingest_analysis_to_graph
+
+                    await ingest_analysis_to_graph(result_dict, analysis_id)
+                except Exception:
+                    logger.exception("analysis_kg_failed analysis_id=%s", analysis_id)
+
             logger.info(
                 "analysis_completed analysis_id=%s grounded=%s confidence=%.1f",
                 analysis_id,

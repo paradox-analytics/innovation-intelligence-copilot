@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useAnalysis } from "@/hooks/use-analysis";
+import { useNotifications } from "@/components/notifications/notification-provider";
 import {
   AlertTriangle,
   Bookmark,
@@ -39,7 +40,7 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // --- Agent definitions ---
 
@@ -217,6 +218,29 @@ function AnalyzePageContent() {
   const { result: liveResult, status, error, agentProgress, submit, reset: resetAnalysis } = useAnalysis();
 
   const result = loadedResult ?? liveResult;
+
+  // Surface analysis lifecycle events as in-app notifications.
+  const { notify } = useNotifications();
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    if (prevStatusRef.current === status) return;
+    prevStatusRef.current = status;
+    if (status === "complete") {
+      notify({
+        type: "analysis_completed",
+        title: "Analysis complete",
+        description: liveResult?.query,
+        href: "/analyze",
+      });
+    } else if (status === "error") {
+      notify({
+        type: "analysis_error",
+        title: "Analysis failed",
+        description: error ?? undefined,
+      });
+    }
+  }, [status, notify, liveResult, error]);
+
   const isLoading = status === "submitting" || status === "streaming" || status === "polling";
   const isComplete = (status === "complete" && liveResult !== null) || loadedResult !== null;
   const isIdle = status === "idle" && loadedResult === null;
@@ -314,6 +338,12 @@ function AnalyzePageContent() {
 
   const handleSubmit = async () => {
     if (!question.trim()) return;
+    notify({
+      type: "analysis_started",
+      title: "Analysis started",
+      description: question,
+      toast: false,
+    });
     await submit({ query: question });
   };
 
