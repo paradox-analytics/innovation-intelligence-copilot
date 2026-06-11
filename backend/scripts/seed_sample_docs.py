@@ -17,8 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
 
-from app.core.database import async_session_factory  # noqa: E402
-from app.ingestion.service import ingest_text  # noqa: E402
+from app.core.database import async_session_factory
+from app.ingestion.service import ingest_text
 
 SAMPLE_DIR = Path(__file__).resolve().parents[2] / "sample-docs"
 

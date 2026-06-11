@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
-from uuid import uuid4
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from datetime import UTC
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,6 +64,7 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
 
         async with async_session_factory() as db:
             from sqlalchemy import text as sql_text
+
             for chunk, embedding in zip(chunks, embeddings):
                 embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
                 await db.execute(
@@ -92,14 +94,22 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
             # Map extracted entity types to the DB enum
             valid_types = {"TECHNOLOGY", "COMPANY", "STARTUP", "MARKET", "PATENT", "RESEARCH_TOPIC"}
             type_map: dict[str, str] = {
-                "technology": "TECHNOLOGY", "company": "COMPANY", "startup": "STARTUP",
-                "market": "MARKET", "patent": "PATENT", "research_topic": "RESEARCH_TOPIC",
-                "research_org": "COMPANY", "person": "COMPANY", "standard": "TECHNOLOGY",
-                "regulation": "TECHNOLOGY", "product": "TECHNOLOGY",
+                "technology": "TECHNOLOGY",
+                "company": "COMPANY",
+                "startup": "STARTUP",
+                "market": "MARKET",
+                "patent": "PATENT",
+                "research_topic": "RESEARCH_TOPIC",
+                "research_org": "COMPANY",
+                "person": "COMPANY",
+                "standard": "TECHNOLOGY",
+                "regulation": "TECHNOLOGY",
+                "product": "TECHNOLOGY",
             }
 
             async with async_session_factory() as db2:
                 from sqlalchemy import text as sql_text
+
                 for entity in entities:
                     etype = type_map.get(entity.entity_type.lower(), "TECHNOLOGY")
                     await db2.execute(
@@ -144,14 +154,16 @@ async def _handle_document_ingestion(payload: dict[str, object]) -> dict[str, ob
 
             logger.info(
                 "ingestion_entities document_id=%s entities=%d relationships=%d",
-                document_id, len(entities), len(relationships),
+                document_id,
+                len(entities),
+                len(relationships),
             )
         except Exception:
             logger.exception("ingestion_entity_extraction_failed document_id=%s", document_id)
 
         return {"status": "completed", "document_id": document_id, "chunks": len(chunks)}
 
-    except Exception as exc:
+    except Exception:
         logger.exception("ingestion_failed document_id=%s", document_id)
         raise
 
@@ -164,7 +176,7 @@ _ANALYSIS_TIMEOUT_SECONDS = 220
 async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]:
     """Run the grounded multi-agent analysis pipeline and persist results."""
     import asyncio
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from sqlalchemy import select
 
@@ -186,13 +198,11 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
     async def on_event(event_type: str, data: dict[str, object]) -> None:
         try:
             await emit_event(analysis_id, event_type, data)
-        except Exception:  # noqa: BLE001 — streaming is best-effort
+        except Exception:
             pass
 
     async with async_session_factory() as db:
-        result = await db.execute(
-            select(AnalysisRequest).where(AnalysisRequest.id == analysis_id)
-        )
+        result = await db.execute(select(AnalysisRequest).where(AnalysisRequest.id == analysis_id))
         analysis = result.scalar_one_or_none()
         if analysis is None:
             logger.error("analysis_not_found analysis_id=%s", analysis_id)
@@ -227,7 +237,7 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
             analysis.status = AnalysisStatus.COMPLETED
             analysis.confidence_score = confidence
             analysis.result = result_dict
-            analysis.completed_at = datetime.now(timezone.utc)
+            analysis.completed_at = datetime.now(UTC)
             await db.commit()
 
             await on_event("agent_completed", {"agent": "executive"})
@@ -243,7 +253,7 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
         except Exception as exc:
             analysis.status = AnalysisStatus.FAILED
             analysis.result = {"error": str(exc)}
-            analysis.completed_at = datetime.now(timezone.utc)
+            analysis.completed_at = datetime.now(UTC)
             await db.commit()
             await emit_analysis_error(analysis_id, str(exc))
             logger.exception("analysis_failed analysis_id=%s", analysis_id)
@@ -253,6 +263,7 @@ async def _handle_analysis_task(payload: dict[str, object]) -> dict[str, object]
 async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
     """Fallback: single Claude call that produces the full analysis."""
     import anthropic
+
     from app.core.config import settings
 
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -287,13 +298,14 @@ async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
         raw = "\n".join(lines).strip()
 
     import json as json_mod
+
     try:
         result = json_mod.loads(raw)
     except json_mod.JSONDecodeError:
         start = raw.find("{")
         end = raw.rfind("}")
         if start >= 0 and end > start:
-            result = json_mod.loads(raw[start:end + 1])
+            result = json_mod.loads(raw[start : end + 1])
         else:
             result = {"recommendation": raw, "confidence_score": 50, "executive_summary": raw}
 
@@ -304,7 +316,7 @@ async def _direct_analysis(query: str) -> tuple[dict[str, object], float]:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage startup and shutdown of database connections and workers."""
-    global _worker_task  # noqa: PLW0603
+    global _worker_task
 
     # Validate environment configuration
     validate_environment()
@@ -373,7 +385,8 @@ app.add_middleware(TimingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 _cors_origins = (
-    ["*"] if settings.CORS_ORIGINS.strip() == "*"
+    ["*"]
+    if settings.CORS_ORIGINS.strip() == "*"
     else [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 )
 

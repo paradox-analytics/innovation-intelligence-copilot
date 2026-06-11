@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,10 +52,8 @@ async def _noop(_event: str, _data: dict[str, object]) -> None:
 async def _run_agent(agent, inputs: AgentInput, on_event: EventHook):  # type: ignore[no-untyped-def]
     await on_event("agent_started", {"agent": agent.name})
     try:
-        output = await asyncio.wait_for(
-            agent.execute(inputs), timeout=_AGENT_TIMEOUT_SECONDS
-        )
-    except Exception as exc:  # noqa: BLE001 — degrade gracefully per agent
+        output = await asyncio.wait_for(agent.execute(inputs), timeout=_AGENT_TIMEOUT_SECONDS)
+    except Exception as exc:
         logger.warning("agent %s failed: %s", agent.name, exc)
         await on_event("agent_completed", {"agent": agent.name})
         return agent.name, {}
@@ -116,7 +114,7 @@ async def run_analysis(
             timeout=_AGENT_TIMEOUT_SECONDS,
         )
         result: AnalysisResult | None = exec_output["result"].get("analysis_result")  # type: ignore[assignment]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("executive agent failed: %s", exc)
         result = None
     await emit("agent_completed", {"agent": "executive"})

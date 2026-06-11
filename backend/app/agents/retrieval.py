@@ -55,9 +55,7 @@ async def retrieve_evidence(
     web_task = search_web(query, max_sources=web_k)
     doc_task = hybrid_search(query, db, top_k=doc_k)
 
-    web_result, doc_result = await asyncio.gather(
-        web_task, doc_task, return_exceptions=True
-    )
+    web_result, doc_result = await asyncio.gather(web_task, doc_task, return_exceptions=True)
 
     if isinstance(web_result, BaseException):
         logger.warning("web retrieval failed: %s", web_result)

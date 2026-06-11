@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import anthropic
 
@@ -30,11 +30,10 @@ class BaseAgent(ABC):
         self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     @abstractmethod
-    async def _run(self, input_data: AgentInput) -> dict[str, object]:
-        ...
+    async def _run(self, input_data: AgentInput) -> dict[str, object]: ...
 
     async def execute(self, input_data: AgentInput) -> AgentOutput:
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         start_ns = time.perf_counter_ns()
         error: str | None = None
         result: dict[str, object] = {}
@@ -46,7 +45,7 @@ class BaseAgent(ABC):
             logger.exception("Agent %s failed", self.name)
 
         duration_ms = (time.perf_counter_ns() - start_ns) / 1_000_000
-        finished = datetime.now(timezone.utc)
+        finished = datetime.now(UTC)
 
         trace = AgentTrace(
             agent_name=self.name,

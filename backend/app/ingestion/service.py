@@ -98,9 +98,7 @@ async def _ingest_text(
     # 5. Extract entities for knowledge graph (best-effort, non-fatal)
     try:
         extraction_text = content[:8000]
-        entities, relationships = await extract_entities(
-            extraction_text, document_id=document_id
-        )
+        entities, relationships = await extract_entities(extraction_text, document_id=document_id)
 
         graph_service = KnowledgeGraphService(neo4j_client)
         for entity in entities:
@@ -115,8 +113,6 @@ async def _ingest_text(
             len(relationships),
         )
     except Exception:
-        logger.exception(
-            "Document %s: entity extraction failed (non-fatal)", document_id
-        )
+        logger.exception("Document %s: entity extraction failed (non-fatal)", document_id)
 
     return document_id
