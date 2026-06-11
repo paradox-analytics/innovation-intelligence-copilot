@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.models import AgentInput, Likelihood, RiskCategory, RiskItem, Severity
 
@@ -13,18 +14,51 @@ You are a technology risk analyst. You are given a strategic question and a \
 numbered pool of retrieved sources (web and document). Identify strategic, \
 technical, market, and regulatory risks grounded in those sources.
 
-Return a JSON array:
-[
-  {
-    "description": "risk description",
-    "category": "strategic" | "technical" | "market" | "regulatory",
-    "severity": "low" | "medium" | "high" | "critical",
-    "likelihood": "unlikely" | "possible" | "likely" | "almost_certain",
-    "mitigation": "recommended mitigation strategy"
-  }
-]
+Use these severity definitions consistently:
+- critical: could end the initiative or cause major loss
+- high: materially threatens timeline, cost, or viability
+- medium: meaningful but manageable
+- low: minor
 
-Be specific about each risk. Return valid JSON only, no markdown fences."""
+Order risks by severity (critical first), then by likelihood. Be specific."""
+
+_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "risks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string"},
+                    "category": {
+                        "type": "string",
+                        "enum": ["strategic", "technical", "market", "regulatory"],
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high", "critical"],
+                    },
+                    "likelihood": {
+                        "type": "string",
+                        "enum": ["unlikely", "possible", "likely", "almost_certain"],
+                    },
+                    "mitigation": {"type": "string"},
+                },
+                "required": [
+                    "description",
+                    "category",
+                    "severity",
+                    "likelihood",
+                    "mitigation",
+                ],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["risks"],
+    "additionalProperties": False,
+}
 
 
 def _enum(enum_cls, value: object, fallback):  # type: ignore[no-untyped-def]
@@ -50,9 +84,9 @@ class RiskAgent(BaseAgent):
             "and regulatory dimensions."
         )
 
-        raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt)
-        parsed = self._parse_json(raw, [])
-        items: list[dict[str, object]] = parsed if isinstance(parsed, list) else []
+        result = await self._ask_json(SYSTEM_PROMPT, user_prompt, "submit_risks", _SCHEMA)
+        raw_items = result.get("risks", [])
+        items = raw_items if isinstance(raw_items, list) else []
 
         risks: list[RiskItem] = []
         for item in items:

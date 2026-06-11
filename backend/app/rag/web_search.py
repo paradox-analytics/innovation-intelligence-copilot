@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import anthropic
 
@@ -44,6 +45,9 @@ you actually retrieved — no prose, no markdown fences:
 Rules:
 - Only include URLs you actually opened via the tools.
 - Prefer 5-8 high-signal sources over many weak ones.
+- STRONGLY prefer sources from the last 12 months — the most recent data should
+  anchor any forward-looking projection. Use older sources only for essential
+  background, and prefer newer data when sources conflict.
 - The snippet must be a concrete, citable fact — not a summary of the whole page."""
 
 _RELEVANCE_SCORE = {"high": 0.85, "medium": 0.6, "low": 0.4}
@@ -123,8 +127,15 @@ async def search_web(query: str, max_sources: int = 8) -> list[WebSource]:
         {"type": _WEB_SEARCH_TOOL, "name": "web_search", "max_uses": settings.WEB_SEARCH_MAX_USES},
         {"type": _WEB_FETCH_TOOL, "name": "web_fetch", "max_uses": settings.WEB_SEARCH_MAX_USES},
     ]
+    today = datetime.now(UTC).date().isoformat()
     messages: list[dict[str, object]] = [
-        {"role": "user", "content": f"Strategic question: {query}"}
+        {
+            "role": "user",
+            "content": (
+                f"Today's date is {today}. Strongly prefer the most recent sources.\n\n"
+                f"Strategic question: {query}"
+            ),
+        }
     ]
 
     model = settings.WEB_SEARCH_MODEL
@@ -135,6 +146,7 @@ async def search_web(query: str, max_sources: int = 8) -> list[WebSource]:
             response = await client.messages.create(
                 model=model,
                 max_tokens=4096,
+                temperature=settings.ANALYSIS_TEMPERATURE,
                 system=_SYSTEM_PROMPT,
                 tools=tools,  # type: ignore[arg-type]
                 messages=messages,  # type: ignore[arg-type]

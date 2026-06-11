@@ -19,23 +19,68 @@ Identify distinct technology signals grounded in the sources across these \
 dimensions: patent filing growth, startup activity/funding, research publication \
 momentum, standards body activity, enterprise adoption.
 
-Return a JSON array:
-[
-  {
-    "technology": "specific technology or trend name",
-    "signal_type": "patent_growth | startup_activity | research_momentum | standards | enterprise_adoption",
-    "signal_strength": 0.0-1.0,
-    "trend_direction": "accelerating | steady | decelerating | emerging",
-    "readiness_level": 1-9,
-    "commercialization_horizon_years": null | number,
-    "supporting_data": ["concrete data point from a source", "..."]
-  }
-]
+Score `signal_strength` (0.0-1.0) by how strong/active the signal is in the sources:
+- 0.80-1.00: many independent indicators (filings, funding, adoption)
+- 0.40-0.79: some indicators
+- 0.00-0.39: nascent or weak
 
-Produce 3-6 DISTINCT signals. Each must have its own signal_strength, \
-readiness_level (Technology Readiness Level 1-9), and trend_direction that \
-genuinely reflect that signal — do NOT reuse the same values across signals. \
-Ground supporting_data in the provided sources. Return valid JSON only, no markdown fences."""
+Set `readiness_level` (Technology Readiness Level, integer 1-9):
+- 9: in production at commercial scale
+- 6-7: pilot/prototype demonstrated in a relevant environment
+- 4-5: validated in the lab
+- 1-3: basic research / proof of concept
+
+Produce 3-6 DISTINCT signals, ordered by signal_strength (highest first). Each \
+signal must have its OWN signal_strength, readiness_level, and trend_direction \
+that genuinely reflect it — do NOT reuse the same values. Ground supporting_data \
+in the provided sources."""
+
+_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "technology_signals": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "technology": {"type": "string"},
+                    "signal_type": {
+                        "type": "string",
+                        "enum": [
+                            "patent_growth",
+                            "startup_activity",
+                            "research_momentum",
+                            "standards",
+                            "enterprise_adoption",
+                        ],
+                    },
+                    "signal_strength": {"type": "number"},
+                    "trend_direction": {
+                        "type": "string",
+                        "enum": ["accelerating", "steady", "decelerating", "emerging"],
+                    },
+                    "readiness_level": {"type": "integer"},
+                    "commercialization_horizon_years": {
+                        "anyOf": [{"type": "number"}, {"type": "null"}]
+                    },
+                    "supporting_data": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": [
+                    "technology",
+                    "signal_type",
+                    "signal_strength",
+                    "trend_direction",
+                    "readiness_level",
+                    "commercialization_horizon_years",
+                    "supporting_data",
+                ],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["technology_signals"],
+    "additionalProperties": False,
+}
 
 
 def _clamp_trl(value: Any) -> int | None:
@@ -62,9 +107,9 @@ class TrendAgent(BaseAgent):
             "readiness level, and trend direction."
         )
 
-        raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt)
-        parsed = self._parse_json(raw, [])
-        items: list[dict[str, Any]] = parsed if isinstance(parsed, list) else []
+        result = await self._ask_json(SYSTEM_PROMPT, user_prompt, "submit_signals", _SCHEMA)
+        raw_items = result.get("technology_signals", [])
+        items = raw_items if isinstance(raw_items, list) else []
 
         signals: list[TechnologySignal] = []
         for item in items:

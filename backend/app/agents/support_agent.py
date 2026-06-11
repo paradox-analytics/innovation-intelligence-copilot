@@ -18,17 +18,34 @@ You are given a numbered pool of retrieved sources (web and document). Identify 
 the strongest supporting factors, grounding each claim ONLY in the sources \
 provided. Cite the source index numbers your claim draws on.
 
-Return a JSON array:
-[
-  {
-    "claim": "supporting factor, stated as a concrete claim",
-    "confidence": 0.0-1.0,
-    "source_indices": [0, 3]
-  }
-]
+Assign `confidence` by evidence strength, using this exact rubric:
+- 0.85-1.00: multiple independent sources in the pool directly support the claim
+- 0.50-0.84: one source directly supports it, or it is a strong inference
+- 0.20-0.49: only weak, indirect, or speculative support
 
-Every claim MUST cite at least one source index from the pool. Do not invent \
-sources or facts not present in the pool. Return valid JSON only, no markdown fences."""
+Produce 3-6 claims, ordered by confidence (highest first). Every claim MUST cite \
+at least one source index that exists in the pool. Do not invent sources or facts."""
+
+_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "supporting_evidence": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "claim": {"type": "string"},
+                    "confidence": {"type": "number"},
+                    "source_indices": {"type": "array", "items": {"type": "integer"}},
+                },
+                "required": ["claim", "confidence", "source_indices"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["supporting_evidence"],
+    "additionalProperties": False,
+}
 
 
 class SupportAgent(BaseAgent):
@@ -47,9 +64,9 @@ class SupportAgent(BaseAgent):
             "Identify the strongest supporting factors, citing source indices."
         )
 
-        raw = await self._ask_claude(SYSTEM_PROMPT, user_prompt)
-        parsed = self._parse_json(raw, [])
-        items: list[dict[str, Any]] = parsed if isinstance(parsed, list) else []
+        result = await self._ask_json(SYSTEM_PROMPT, user_prompt, "submit_support", _SCHEMA)
+        raw_items = result.get("supporting_evidence", [])
+        items = raw_items if isinstance(raw_items, list) else []
 
         evidence_list: list[Evidence] = []
         for item in items:

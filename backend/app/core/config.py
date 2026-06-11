@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     # call per analysis). Disable to build the graph from documents only.
     ENABLE_KG_FROM_ANALYSIS: bool = True
 
+    # Determinism / reproducibility
+    # Greedy decoding (0.0) minimizes run-to-run drift. Anthropic has no seed, so
+    # this is low-drift, not bit-exact.
+    ANALYSIS_TEMPERATURE: float = 0.0
+    # Reuse the retrieved evidence pool for an identical query (stops live web
+    # results from changing the inputs between runs).
+    ENABLE_EVIDENCE_CACHE: bool = True
+    # Return a prior identical analysis verbatim (zero drift, zero cost) instead of
+    # re-running. Invalidated when models/prompts/settings change.
+    ENABLE_RESULT_CACHE: bool = True
+    # Bump to invalidate caches when prompts change materially.
+    ANALYSIS_PROMPT_VERSION: str = "1"
+
     # Sync DB URL (for alembic)
     DATABASE_URL_SYNC: str = ""
 
