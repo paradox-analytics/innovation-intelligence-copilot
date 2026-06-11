@@ -211,9 +211,9 @@ class TestJsonResponseFormat:
             "risks",
             "key_assumptions",
         }
-        assert required_keys.issubset(set(payload.keys())), (
-            f"Missing keys: {required_keys - set(payload.keys())}"
-        )
+        assert required_keys.issubset(
+            set(payload.keys())
+        ), f"Missing keys: {required_keys - set(payload.keys())}"
 
     @pytest.mark.unit
     async def test_json_evidence_structure(

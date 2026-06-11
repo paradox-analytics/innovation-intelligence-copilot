@@ -31,7 +31,7 @@ def _redact_value(value: object) -> object:
         return value
     if isinstance(value, dict):
         return {k: _redact_value(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return type(value)(_redact_value(v) for v in value)
     return value
 

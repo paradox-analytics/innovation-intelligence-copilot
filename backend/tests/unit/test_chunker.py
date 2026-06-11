@@ -87,9 +87,9 @@ class TestChunkOverlap:
         for i in range(len(chunks) - 1):
             tail = chunks[i][-30:]
             # The next chunk should start with or contain part of the tail
-            assert any(word in chunks[i + 1][:60] for word in tail.split()), (
-                f"No overlap found between chunk {i} and chunk {i + 1}"
-            )
+            assert any(
+                word in chunks[i + 1][:60] for word in tail.split()
+            ), f"No overlap found between chunk {i} and chunk {i + 1}"
 
     @pytest.mark.unit
     async def test_zero_overlap(self) -> None:

@@ -81,7 +81,7 @@ class TrendAgent(BaseAgent):
                     signal_strength=float(item.get("signal_strength", 0.0) or 0.0),
                     trend_direction=TrendDirection(trend),
                     commercialization_horizon_years=(
-                        float(horizon) if isinstance(horizon, (int, float)) else None
+                        float(horizon) if isinstance(horizon, int | float) else None
                     ),
                     supporting_data=(
                         [str(d) for d in supporting] if isinstance(supporting, list) else []

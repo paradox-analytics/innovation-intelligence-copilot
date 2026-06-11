@@ -105,7 +105,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "backend/tests/**/*.py" = ["S101", "S105", "S106"]  # test fixtures use literal creds
 # CLI tool: print is the UX; blocking I/O + subprocess are fine in an interactive CLI.
-"backend/app/cli.py" = ["T201", "ASYNC230", "ASYNC240", "ASYNC250", "S607"]
+"backend/app/cli.py" = ["T201", "ASYNC230", "ASYNC251", "S603", "S607"]
 "backend/scripts/**/*.py" = ["T201"]  # one-off scripts — print is fine
 
 [tool.ruff.lint.isort]
@@ -153,6 +153,7 @@ module = [
     "app.core.openapi",
     "app.core.rate_limit",
     "app.core.logging_config",
+    "app.core.tasks",  # redis-py dual sync/async typing quirks (version-dependent)
 ]
 ignore_errors = true
 
